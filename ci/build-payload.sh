@@ -99,12 +99,11 @@ else
 fi
 [ -f "$src/scripts/build.sh" ] || { echo "build-payload: $src is not a darling-lol checkout" >&2; exit 1; }
 
-# ---- 2. portable build flags + kernel-header compatibility -------------------
+# ---- 2. portable build flags -------------------------------------------------
 if [ -n "$reuse_dir" ] && [ -z "${LOL_NORMALIZE_REUSE:-}" ]; then
-  echo 'build-payload: reuse mode: skipping flag normalization and header patching (set LOL_NORMALIZE_REUSE=1 to force)'
+  echo 'build-payload: reuse mode: skipping flag normalization (set LOL_NORMALIZE_REUSE=1 to force)'
 else
   sh "$repo_root/ci/normalize-flags.sh" "$src"
-  sh "$repo_root/ci/patch-old-kernel-headers.sh" "$src"
 fi
 
 # ---- 3. build ----------------------------------------------------------------
@@ -116,6 +115,16 @@ fi
 if [ "$skip_build" = 1 ]; then
   echo 'build-payload: --skip-build given; using the existing build tree'
 else
+  if [ -n "$reuse_dir" ] && [ -z "${LOL_NORMALIZE_REUSE:-}" ]; then
+    echo 'build-payload: reuse mode: skipping the header patch (build.sh prepares the existing tree)'
+  else
+    # The Darling sources only exist after prepare.py runs, and build.sh would
+    # otherwise compile before we get a chance to patch them; its second
+    # prepare.py pass is a no-op thanks to the insertion point the patcher picks.
+    echo 'build-payload: preparing the Darling sources'
+    ( cd "$src" && python3 scripts/configure.py && python3 scripts/prepare.py )
+    sh "$repo_root/ci/patch-old-kernel-headers.sh" "$src/build/darling-src"
+  fi
   echo "build-payload: building darling-lol (JOBS=$jobs); this is the long step"
   ( cd "$src" && JOBS="$jobs" ./scripts/build.sh )
 fi

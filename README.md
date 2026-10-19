@@ -32,7 +32,7 @@ script never uses root as the target user).
 
 ## Requirements
 
-- x86-64, Linux kernel >= 5.14, glibc >= 2.35 (musl is not supported)
+- x86-64-v2 (2009 or newer; any CPU that can run the game's Vulkan driver is), Linux kernel >= 5.14, glibc >= 2.35 (musl is not supported)
 - X11 session, or Wayland with Xwayland
 - AMD RADV is the validated GPU path upstream; Intel/NVIDIA are experimental
 - ~35 GB free disk for the game itself

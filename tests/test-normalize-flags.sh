@@ -21,15 +21,20 @@ printf 'no flags here\n' > "$work/fake/tools/plain.txt"
 
 sh "$tool" "$work/fake" >/dev/null
 
-if grep -q -- '-march=x86-64' "$work/fake/scripts/build.sh"; then
+if grep -q -- '-march=x86-64-v2' "$work/fake/scripts/build.sh"; then
   pass 'scripts/build.sh is rewritten'
 else
   fail 'scripts/build.sh is rewritten'
 fi
-if grep -q -- '-march=x86-64' "$work/fake/tools/backend/tool.py"; then
+if grep -q -- '-march=x86-64-v2' "$work/fake/tools/backend/tool.py"; then
   pass 'tools/backend/tool.py is rewritten'
 else
   fail 'tools/backend/tool.py is rewritten'
+fi
+if grep -q -- '-march=x86-64 ' "$work/fake/scripts/build.sh"; then
+  fail 'baseline is v2 (16-byte atomics stay inline)'
+else
+  pass 'baseline is v2 (16-byte atomics stay inline)'
 fi
 if grep -rq -- '-march=native' "$work/fake"; then
   fail 'no -march=native left behind'

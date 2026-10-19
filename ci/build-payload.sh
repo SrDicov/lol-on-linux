@@ -4,7 +4,7 @@
 # payload.tar.zst.
 #
 # The pipeline mirrors the upstream build/install flow but never compiles for
-# the build host: host-CPU flags are normalized to x86-64, the overlays are
+# the build host: host-CPU flags are normalized to x86-64-v2, the overlays are
 # staged into a throwaway prefix, and the X11 shim is rebuilt with final
 # install paths, so nothing from the build machine leaks into the payload.
 #

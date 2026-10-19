@@ -16,6 +16,8 @@ BuildRoot:      %{_tmppath}/lol-on-linux-%{version}
 AutoReqProv:    no
 
 Requires:       libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip
+# the bundled libLLVM dlopen()ed by iridium
+Requires:       libxml2, z3-libs, libzstd, zlib, libedit, libffi
 Recommends:     gamemode
 
 %description
@@ -35,6 +37,14 @@ mkdir -p %{buildroot}
 # tree (usr/local/...) lands directly in the buildroot.
 tar -xpf %{payload_path} -C %{buildroot} --strip-components=1
 
+%post
+# The payload ships its own libLLVM under /usr/local/lib/lol-on-linux/llvm and
+# an ld.so.conf.d entry for it; iridium dlopen()s that library by name.
+ldconfig 2>/dev/null || :
+
+%postun
+ldconfig 2>/dev/null || :
+
 %files
 # Exact paths, NOT /usr/local/**: a wildcards %files list would package
 # whatever happens to be in the buildroot and silently pass over payload
@@ -42,6 +52,7 @@ tar -xpf %{payload_path} -C %{buildroot} --strip-components=1
 # record ownership of broad /usr/local paths that other software may also
 # install into, causing file conflicts at install time. Exact paths make a
 # payload-layout change fail the build loudly instead.
+/etc/ld.so.conf.d/lol-on-linux.conf
 /usr/local/bin/darling
 /usr/local/bin/darlingserver
 /usr/local/bin/darling-coredump

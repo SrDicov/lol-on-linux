@@ -67,6 +67,28 @@ echo 'smoke-test: package installed; checking the system ties'
 [ -u /usr/local/bin/darling ] || { echo 'smoke-test: darling is not setuid root (packages must preserve it)' >&2; exit 1; }
 /usr/local/bin/lol-on-linux --version
 
+# iridium dlopen()s the bundled libLLVM by name; the packages run ldconfig so
+# the loader cache has it, and every library it links against must exist here.
+llvm_lib=$(sed -n 's/.*"library"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  /usr/local/lib/lol-on-linux/payload-info.json | head -n 1)
+[ -n "$llvm_lib" ] || { echo 'smoke-test: payload-info.json has no LLVM library' >&2; exit 1; }
+llvm_path="/usr/local/lib/lol-on-linux/llvm/$llvm_lib"
+[ -f "$llvm_path" ] || { echo "smoke-test: bundled libLLVM is missing: $llvm_path" >&2; exit 1; }
+if ldd "$llvm_path" 2>&1 | grep -q 'not found'; then
+  echo "smoke-test: the bundled libLLVM has unresolved libraries:" >&2
+  ldd "$llvm_path" | grep 'not found' >&2
+  exit 1
+fi
+ldconfig -p | grep -q "/lol-on-linux/llvm/$llvm_lib" || {
+  echo "smoke-test: ldconfig does not know the bundled libLLVM ($llvm_lib); the post-install hook did not run" >&2
+  exit 1
+}
+python3 -c "import ctypes, sys; ctypes.CDLL('$llvm_lib')" || {
+  echo "smoke-test: dlopen() of the bundled $llvm_lib failed" >&2
+  exit 1
+}
+echo "smoke-test: bundled libLLVM loads by name ($llvm_lib)"
+
 echo 'smoke-test: verifying the runtime as a normal user (fresh HOME)'
 id -u loluser >/dev/null 2>&1 || useradd -m -s /bin/bash loluser
 if [ -e /.dockerenv ] || [ -e /run/.containerenv ]; then

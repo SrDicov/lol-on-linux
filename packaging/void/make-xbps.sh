@@ -75,7 +75,7 @@ xbps-create \
   -m "SrDicov <noreply@users.noreply.github.com>" \
   -l GPL-3.0 \
   -H https://github.com/SrDicov/lol-on-linux \
-  -D "libstdc++ libX11 libxcb libXext alsa-lib libpulse python3 bash curl unzip" \
+  -D "libstdc++ libX11 libxcb libXext alsa-lib libpulse python3 bash curl unzip libxml2 z3 libzstd zlib libedit libffi" \
   -o "$work/repodir" \
   "$work/pkg"
 

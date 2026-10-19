@@ -43,6 +43,10 @@ payload_commit() {
   sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LIB/payload-info.json" 2>/dev/null | head -n 1
 }
 
+payload_llvm() {
+  sed -n 's/.*"library"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LIB/payload-info.json" 2>/dev/null | head -n 1
+}
+
 load_config() {
   REGION="${REGION:-euw}"
   RCLOL_REGION="${RCLOL_REGION:-EUW}"
@@ -127,6 +131,7 @@ exec_game() {
 doctor() {
   echo "lol-on-linux $(payload_version) (upstream $(payload_commit))"
   echo "payload:  $LIB"
+  echo "llvm:     $(payload_llvm)"
   echo "kernel:   $(uname -r)"
   echo "libc:     $(getconf GNU_LIBC_VERSION 2>/dev/null || echo 'non-glibc (unsupported)')"
   echo "distro:   $(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | tr -d '"' | head -n 1)"

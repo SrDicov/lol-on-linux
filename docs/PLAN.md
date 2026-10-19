@@ -21,7 +21,7 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 | `build.sh` usa `CMAKE_INSTALL_PREFIX=/usr/local`; `riot-desktop-entry.py` ya genera entrada `.desktop` + icono SVG original (y usa el `.icns` real del juego si está instalado) | Se reutiliza todo; el árbol entero queda en `/usr/local` (compatible con sistemas inmutables tipo Silverblue/Bazzite, donde `/usr/local` es la zona mutable) |
 | Kernel **≥ 5.14** obligatorio y x86-64 (32-bit ABI descartada por el patch de OpenDirectory) | Corta naturalmente a Ubuntu 20.04 / Debian 11: la base soportada es glibc ≥ 2.35 (Ubuntu 22.04, Debian 12) |
 
-**Consecuencia arquitectónica principal:** un **único build genérico por release** (contenedor `ubuntu:22.04` + LLVM 23, `-march=x86-64-v2`, glibc 2.35, libstdc++ GCC 11) sirve para las 5 familias. Los paquetes por distro son **reempaquetados del mismo payload** con metadata propia — no 8 compiladas completas.
+**Consecuencia arquitectónica principal:** un **único build genérico por release** (contenedor `ubuntu:22.04` + LLVM 22, `-march=x86-64-v2`, glibc 2.35, libstdc++ GCC 11) sirve para las 5 familias. Los paquetes por distro son **reempaquetados del mismo payload** con metadata propia — no 8 compiladas completas.
 
 ---
 
@@ -30,7 +30,7 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 ### Pilar A — CI: `release.yml` + `check-upstream.yml`
 
 **Job pesado (1 solo):**
-1. Contenedor `ubuntu:22.04`; instala deps de upstream + LLVM/Clang 23 (tarball oficial LLVM, fallback `apt.llvm.org`).
+1. Contenedor `ubuntu:22.04`; instala deps de upstream + LLVM/Clang 22 desde `apt.llvm.org` (los tarballs oficiales son estáticos y iridium necesita la `libLLVM.so`; el payload la incluye porque ninguna distro trae la major exacta).
 2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). Cache de fuentes (`actions/cache`) por SHA upstream.
 3. **Normaliza flags**: `sed -i 's/-march=native/-march=x86-64-v2/g'` sobre `scripts/ tools/` + verificación de 0 ocurrencias restantes.
 4. `build.sh` con `JOBS` del runner → `cmake --install` a **DESTDIR de staging** (base runtime).
@@ -185,7 +185,7 @@ lol-on-linux/
 | Riesgo | Mitigación |
 |---|---|
 | Job de build > 6 h en runner 4 vCPU | Cache de fuentes por SHA; re-run incremental; dividir en 2 jobs; runner más grande puntual si es necesario |
-| LLVM 23 tarball no arranca en glibc 2.35 | Fallback `apt.llvm.org` (jammy) o clang del distro ≥ 22; documentado |
+| LLVM mayor distinta en el host rompe iridium (`LLVM version mismatch`) | El payload incluye la `libLLVM` del build (headers y librería del mismo `apt.llvm.org`), la declara en `ld.so.conf.d` y los paquetes corren `ldconfig`; Darling descarta `LD_LIBRARY_PATH` del entorno del guest |
 | libstdc++ más nueva que la del target | Build baseline Ubuntu 22.04 (GCC 11) → corre en todas las soportadas; fallback: `-static-libstdc++` solo para `darlingserver`/`coredump` |
 | Audio: libasound vs libpulse exacta | Se detecta en el job de payload; se declaran como deps del paquete |
 | `libDarlingXShm.dylib` con ruta de build horneada | Se recompila en CI con la ruta final fija `/usr/local/lib/lol-on-linux/` |

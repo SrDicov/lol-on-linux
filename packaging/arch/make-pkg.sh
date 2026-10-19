@@ -82,7 +82,27 @@ depend = python
 depend = bash
 depend = curl
 depend = unzip
+depend = libxml2
+depend = z3
+depend = libzstd
+depend = zlib
+depend = libedit
+depend = libffi
 optdepend = gamemode: GPU/latency nice-to-haves
+EOF
+
+# The bundled libLLVM lives under /usr/local/lib, which pacman's ldconfig hook
+# does not watch, and iridium dlopen()s it by name.
+cat > "$work/pkg/.INSTALL" <<'EOF'
+post_install() {
+  ldconfig
+}
+post_upgrade() {
+  ldconfig
+}
+post_remove() {
+  ldconfig
+}
 EOF
 
 # .MTREE (checksum manifest) needs bsdtar's mtree format support; skip it

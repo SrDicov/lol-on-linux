@@ -15,6 +15,8 @@ Built by `ci/build-payload.sh` inside the build container. Single top-level dire
     payload/usr/local/libexec/darling/**                   # base runtime (cmake --install)
     payload/usr/local/lib/lol-on-linux/libdarling-xshm.so
     payload/usr/local/lib/lol-on-linux/libDarlingXShm.dylib
+    payload/etc/ld.so.conf.d/lol-on-linux.conf             # puts the bundled libLLVM on the loader path
+    payload/usr/local/lib/lol-on-linux/llvm/**                # bundled shared libLLVM (basename from llvm-config)
     payload/usr/local/lib/lol-on-linux/payload-info.json
     payload/usr/local/lib/lol-on-linux/first-run.sh
     payload/usr/local/lib/lol-on-linux/install-remote.sh
@@ -31,7 +33,12 @@ Rules:
 
 - No Riot content, no game files, no secrets.
 - File permissions and symlinks preserved.
-- `payload-info.json`: `{"version": "...", "upstream": {"repo": "...", "commit": "..."}, "built_at": "...", "arch": "x86_64"}`
+- `payload-info.json`: `{"version": "...", "upstream": {"repo": "...", "commit": "..."}, "llvm": {"version": "...", "library": "libLLVM-XX.so"}, "built_at": "...", "arch": "x86_64"}`
+- `llvm/`: the shared libLLVM iridium `dlopen()`s at runtime (headers and library come
+  from the same toolchain; no distribution ships the matching major). Darling strips
+  `LD_LIBRARY_PATH` from the guest environment, so the library is resolved through the
+  loader cache: the payload ships `etc/ld.so.conf.d/lol-on-linux.conf` and every package
+  runs `ldconfig` after (un)install (pacman/void triggers cover their own).
 
 ## 2. Packages
 
@@ -51,12 +58,13 @@ Dependencies (distro names, without version pins):
 
 | family | runtime deps |
 |---|---|
-| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip — Recommends: gamemode, xwayland |
-| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip — Recommends: gamemode |
-| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip — optdepend: gamemode |
-| void | libstdc++, libX11, libxcb, libXext, alsa-lib, libpulse, python3, bash, curl, unzip |
+| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip, libxml2, libz3-4 \| libz3-4t64, libzstd1, zlib1g, libedit2, libffi8 — Recommends: gamemode, xwayland |
+| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip, libxml2, z3-libs, libzstd, zlib, libedit, libffi — Recommends: gamemode |
+| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip, libxml2, z3, libzstd, zlib, libedit, libffi — optdepend: gamemode |
+| void | libstdc++, libX11, libxcb, libXext, alsa-lib, libpulse, python3, bash, curl, unzip, libxml2, z3, libzstd, zlib, libedit, libffi |
 
-(`libxcb-shm` ships inside the `libxcb` package on rpm/arch/void.)
+(`libxcb-shm` ships inside the `libxcb` package on rpm/arch/void. The libxml2/z3/zstd/
+zlib/libedit/libffi tail is what the bundled `libLLVM` itself links against.)
 
 ## 3. Release manifest (`manifest.json`)
 

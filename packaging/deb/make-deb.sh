@@ -53,6 +53,25 @@ mkdir -p "$work/pkg/DEBIAN"
 sed -e "s/@VERSION@/$version/g" -e "s/@INSTALLED_SIZE@/$installed_size/g" \
   "$here/control.in" > "$work/pkg/DEBIAN/control"
 chmod 644 "$work/pkg/DEBIAN/control"
+# The payload ships its own libLLVM under /usr/local/lib/lol-on-linux/llvm and
+# an ld.so.conf.d entry for it; iridium dlopen()s that library by name, so the
+# loader cache has to be refreshed after (un)install.
+cat > "$work/pkg/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+[ "$1" = configure ] || exit 0
+if command -v ldconfig >/dev/null 2>&1; then
+  ldconfig
+fi
+EOF
+cat > "$work/pkg/DEBIAN/postrm" <<'EOF'
+#!/bin/sh
+set -e
+if command -v ldconfig >/dev/null 2>&1; then
+  ldconfig
+fi
+EOF
+chmod 755 "$work/pkg/DEBIAN/postinst" "$work/pkg/DEBIAN/postrm"
 
 target="$out/lol-on-linux_${version}_amd64.deb"
 rm -f "$target"

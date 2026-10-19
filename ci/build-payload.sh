@@ -279,10 +279,51 @@ for f in common.py configure.py run.sh; do
   install -m 644 "$src/scripts/$f" "$payload/usr/local/lib/lol-on-linux/scripts/$f"
 done
 
+# ---- 10b. bundle the LLVM shared library ------------------------------------
+# iridium dlopen()s the libLLVM whose headers it was compiled against and
+# rejects a different major at runtime; no distribution ships the matching
+# major, so the payload carries it. Darling strips LD_LIBRARY_PATH from the
+# guest environment, so the library is resolved through the loader cache: the
+# payload drops an ld.so.conf.d entry and the packages run ldconfig on install.
+echo 'build-payload: bundling the LLVM shared library'
+llvm_libname=$(llvm-config --link-shared --libnames) || {
+  echo 'build-payload: llvm-config reports no shared libLLVM' >&2
+  exit 1
+}
+llvm_libfile=$(llvm-config --link-shared --libfiles) || {
+  echo 'build-payload: llvm-config could not name the libLLVM file' >&2
+  exit 1
+}
+if [ "$(printf '%s\n' "$llvm_libfile" | wc -l)" -gt 1 ]; then
+  echo "build-payload: expected one shared libLLVM, got: $llvm_libfile" >&2
+  exit 1
+fi
+case "$llvm_libname" in
+  lib*.so*) ;;
+  *) echo "build-payload: unexpected llvm-config --libnames output: $llvm_libname" >&2; exit 1 ;;
+esac
+if [ ! -f "$llvm_libfile" ]; then
+  echo "build-payload: libLLVM not found at $llvm_libfile" >&2
+  exit 1
+fi
+llvm_version=$(llvm-config --version)
+llvm_dir="$payload/usr/local/lib/lol-on-linux/llvm"
+mkdir -p "$llvm_dir"
+cp -Lf "$llvm_libfile" "$llvm_dir/$llvm_libname"
+chmod 755 "$llvm_dir/$llvm_libname"
+echo "build-payload: LLVM $llvm_version -> usr/local/lib/lol-on-linux/llvm/$llvm_libname ($(du -h "$llvm_dir/$llvm_libname" | cut -f1))"
+mkdir -p "$payload/etc/ld.so.conf.d"
+printf '%s\n' /usr/local/lib/lol-on-linux/llvm > "$payload/etc/ld.so.conf.d/lol-on-linux.conf"
+llvm_doc=$(find /usr/share/doc -maxdepth 1 -type d -name 'libllvm[0-9]*' 2>/dev/null | head -n 1) || true
+if [ -n "$llvm_doc" ] && [ -f "$llvm_doc/copyright" ]; then
+  install -m 644 "$llvm_doc/copyright" "$payload/usr/local/share/doc/lol-on-linux/LLVM-LICENSE.txt"
+fi
+
 cat > "$payload/usr/local/lib/lol-on-linux/payload-info.json" <<EOF
 {
   "version": "$version",
   "upstream": { "repo": "$upstream_repo", "commit": "$upstream_commit" },
+  "llvm": { "version": "$llvm_version", "library": "$llvm_libname" },
   "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "arch": "x86_64"
 }

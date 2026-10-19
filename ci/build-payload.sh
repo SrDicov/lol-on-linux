@@ -125,6 +125,35 @@ else
     ( cd "$src" && python3 scripts/configure.py && python3 scripts/prepare.py )
     sh "$repo_root/ci/patch-old-kernel-headers.sh" "$src/build/darling-src"
   fi
+  # iridium uses LLVM C API entries added after LLVM 21
+  # (LLVMGetGEPSourceElementType), so the configure must resolve the LLVM that
+  # install-toolchain.sh unpacked rather than whichever system LLVM CMake finds
+  # first. CMAKE_PREFIX_PATH steers find_package(LLVM CONFIG) to it; a stray
+  # LLVM_DIR in the environment would win over that, so drop it.
+  if [ -d /opt/llvm/lib/cmake/llvm ]; then
+    unset LLVM_DIR LLVM_ROOT
+    CMAKE_PREFIX_PATH="/opt/llvm${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+    export CMAKE_PREFIX_PATH
+  fi
+  probe=$(mktemp -d)
+  cat > "$probe/CMakeLists.txt" <<'PROBE'
+cmake_minimum_required(VERSION 3.20)
+project(llvm-probe LANGUAGES C CXX)
+find_package(LLVM QUIET CONFIG)
+if (LLVM_FOUND)
+  message(STATUS "llvm-probe: version=${LLVM_PACKAGE_VERSION} dir=${LLVM_DIR}")
+else ()
+  message(STATUS "llvm-probe: LLVM not found")
+endif ()
+PROBE
+  probe_out=$(cmake -S "$probe" -B "$probe/build" 2>&1 | grep -a 'llvm-probe:' || true)
+  probe_out=${probe_out#-- }
+  rm -rf "$probe"
+  echo "build-payload: ${probe_out:-llvm-probe: cmake failed}"
+  case "$probe_out" in
+    *version=2[2-9]*|*version=[3-9][0-9]*) ;;
+    *) echo 'build-payload: the tree would compile against an LLVM older than 22, which iridium cannot use' >&2; exit 1 ;;
+  esac
   echo "build-payload: building darling-lol (JOBS=$jobs); this is the long step"
   ( cd "$src" && JOBS="$jobs" ./scripts/build.sh )
 fi

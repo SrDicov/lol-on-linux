@@ -43,6 +43,13 @@ if [ "$launcher_ok" = 1 ]; then
       run_root ln -sf "$mount/bin/$tool" "/usr/local/bin/$tool"
     fi
   done
+  # Make find_package(LLVM CONFIG) resolve this LLVM without extra flags: the
+  # /usr/local prefix is always searched. Without it the system LLVM (an old
+  # one on the runner image) wins and iridium fails on newer C API entries.
+  if [ -d "$mount/lib/cmake/llvm" ]; then
+    run_root mkdir -p /usr/local/lib/cmake
+    run_root ln -sfn "$mount/lib/cmake/llvm" /usr/local/lib/cmake/llvm
+  fi
 else
   echo 'install-toolchain: tarballs unavailable; falling back to apt.llvm.org' >&2
   run_root apt-get update -qq
@@ -59,6 +66,10 @@ else
       run_root ln -sf "$(command -v "$tool-23")" "/usr/local/bin/$tool"
     fi
   done
+  if [ -d /usr/lib/llvm-23/lib/cmake/llvm ]; then
+    run_root mkdir -p /usr/local/lib/cmake
+    run_root ln -sfn /usr/lib/llvm-23/lib/cmake/llvm /usr/local/lib/cmake/llvm
+  fi
 fi
 
 command -v clang >/dev/null 2>&1 || { echo 'install-toolchain: clang is missing after install' >&2; exit 1; }

@@ -40,7 +40,8 @@ run_root apt-get install -y -qq --no-install-recommends \
   libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
   libjpeg-turbo8-dev libtiff5-dev libdeflate-dev \
   libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-tools \
-  uuid-dev libbsd-dev libcap-dev libarchive-dev liblz4-dev \
+  uuid-dev libbsd-dev libcap-dev libcap2-bin libarchive-dev liblz4-dev \
+  libfuse-dev libudev-dev libelf-dev libgif-dev libxkbfile-dev \
   locales
 
 git lfs install --skip-repo >/dev/null 2>&1 || true

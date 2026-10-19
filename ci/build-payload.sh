@@ -4,7 +4,8 @@
 # payload.tar.zst.
 #
 # The pipeline mirrors the upstream build/install flow but never compiles for
-# the build host: host-CPU flags are normalized to x86-64-v2, the overlays are
+# the build host: host-CPU flags are normalized to x86-64-v2, the pre-6.11
+# kernel-header gap is filled in, the overlays are
 # staged into a throwaway prefix, and the X11 shim is rebuilt with final
 # install paths, so nothing from the build machine leaks into the payload.
 #
@@ -98,11 +99,12 @@ else
 fi
 [ -f "$src/scripts/build.sh" ] || { echo "build-payload: $src is not a darling-lol checkout" >&2; exit 1; }
 
-# ---- 2. portable build flags -------------------------------------------------
+# ---- 2. portable build flags + kernel-header compatibility -------------------
 if [ -n "$reuse_dir" ] && [ -z "${LOL_NORMALIZE_REUSE:-}" ]; then
-  echo 'build-payload: reuse mode: skipping flag normalization (set LOL_NORMALIZE_REUSE=1 to force)'
+  echo 'build-payload: reuse mode: skipping flag normalization and header patching (set LOL_NORMALIZE_REUSE=1 to force)'
 else
   sh "$repo_root/ci/normalize-flags.sh" "$src"
+  sh "$repo_root/ci/patch-old-kernel-headers.sh" "$src"
 fi
 
 # ---- 3. build ----------------------------------------------------------------

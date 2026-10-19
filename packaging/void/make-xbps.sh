@@ -68,7 +68,21 @@ if ! xbps-create --help 2>&1 | grep -q -- --dependencies; then
   exit 1
 fi
 
-xbps-create \
+# xbps never runs ldconfig (no trigger, no code path: grepped the whole source),
+# and the bundled libLLVM sits outside the loader's default search path, so the
+# cache is the only way dlopen() finds it by name. A destdir ./INSTALL file is
+# xbps's install script slot, and xbps-create consumes it as metadata instead of
+# shipping it. No case label on "$1": the action is bare "post", ldconfig is
+# idempotent, and guessing the spelling is how that check would silently rot.
+cat >"$work/pkg/INSTALL" <<'EOF'
+#!/bin/sh
+command -v ldconfig >/dev/null 2>&1 && ldconfig
+exit 0
+EOF
+
+# xbps-create has no -o/--output: it always writes into the cwd.
+mkdir -p "$work/repodir"
+(cd "$work/repodir" && xbps-create \
   -A x86_64 \
   -n "lol-on-linux-${ver}_1" \
   -s "League of Legends client on x86-64 Linux via Darling" \
@@ -76,8 +90,7 @@ xbps-create \
   -l GPL-3.0 \
   -H https://github.com/SrDicov/lol-on-linux \
   -D "libstdc++ libX11 libxcb libXext alsa-lib libpulse python3 bash curl unzip libxml2 z3 libzstd zlib libedit libffi" \
-  -o "$work/repodir" \
-  "$work/pkg"
+  "$work/pkg")
 
 built_list=$(find "$work/repodir" -maxdepth 1 -type f -name '*.xbps')
 built=${built_list%%$'\n'*}

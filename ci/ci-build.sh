@@ -42,7 +42,12 @@ run_root apt-get install -y -qq --no-install-recommends \
   libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-tools \
   uuid-dev libbsd-dev libcap-dev libcap2-bin libarchive-dev liblz4-dev \
   libfuse-dev libudev-dev libelf-dev libgif-dev libxkbfile-dev \
-  locales
+  locales \
+  gcc-multilib
+# gcc-multilib is not for a 32-bit build: it is the only jammy package that
+# creates /usr/include/asm -> x86_64-linux-gnu/asm. Darling's vendored
+# fanotify.h goes through <linux/types.h> to <asm/types.h>, which Arch ships
+# directly but Debian/Ubuntu keep under the multiarch dir.
 
 git lfs install --skip-repo >/dev/null 2>&1 || true
 

@@ -1,0 +1,215 @@
+#!/bin/sh
+# lol-on-linux launcher CLI. This is what the menu entry and the desktop
+# shortcut start. It prepares the per-user runtime on first use, then launches
+# the Riot Client / League of Legends through Darling. The game itself is
+# installed manually with Riot's official installer (started by --install-game)
+# and the user's own account; this project ships no Riot content.
+#
+# WARNING: using this project can get your account permanently banned. Do not
+# cheat, do not play ranked, and do not use your main account.
+set -eu
+
+LIB=/usr/local/lib/lol-on-linux
+MINI="${XDG_DATA_HOME:-$HOME/.local/share}/lol-on-linux"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/lol-on-linux/config"
+DPREFIX="${DPREFIX:-$HOME/.darling}"
+export DPREFIX
+
+usage() {
+  cat <<'EOF'
+lol-on-linux - unofficial runtime to run Riot's macOS League of Legends client on Linux.
+
+Usage: lol-on-linux [command]
+
+  (none)          prepare the runtime if needed, then launch Riot Client / League
+  --install-game  download Riot's official installer and start it (needs your
+                  Riot account and ~35 GB of disk; closes when the installer does)
+  --first-run     prepare/refresh the per-user runtime only
+  --verify        check that the runtime works without starting the client
+  --doctor        print an environment report for troubleshooting
+  --version       print the installed payload version
+  --help          this help
+
+This project is not affiliated with Riot Games. Riot's macOS client does not
+run natively on Linux; it runs through the Darling compatibility layer.
+EOF
+}
+
+payload_version() {
+  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LIB/payload-info.json" 2>/dev/null | head -n 1
+}
+
+payload_commit() {
+  sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LIB/payload-info.json" 2>/dev/null | head -n 1
+}
+
+load_config() {
+  REGION="${REGION:-euw}"
+  RCLOL_REGION="${RCLOL_REGION:-EUW}"
+  RCLOL_LOCALE="${RCLOL_LOCALE:-en_GB}"
+  if [ -f "$CONFIG" ]; then
+    # shellcheck source=/dev/null
+    . "$CONFIG"
+  fi
+  export RCLOL_REGION RCLOL_LOCALE
+}
+
+first_run() {
+  sh "$LIB/first-run.sh"
+}
+
+game_installed() {
+  [ -d "$DPREFIX/Users/Shared/Riot Games/Riot Client.app" ] ||
+    [ -e "$DPREFIX/Applications/Riot Client.app" ] ||
+    [ -d "$DPREFIX/Applications/League of Legends.app" ]
+}
+
+install_game() {
+  load_config
+  region=$REGION
+  if [ -t 0 ]; then
+    printf 'Riot region for the game install [%s]: ' "$REGION"
+    read -r answer || answer=
+    if [ -n "$answer" ]; then
+      region=$answer
+    fi
+  fi
+  case "$region" in
+    lan) region=la1 ;;
+    las) region=la2 ;;
+    oce) region=oc1 ;;
+  esac
+  case "$region" in
+    euw|eune|na|br|kr|jp|la1|la2|oc1|ru|tr) ;;
+    *)
+      echo "lol-on-linux: invalid region '$region' (use euw, eune, na, br, kr, jp, lan, las, oce, ru or tr)" >&2
+      exit 1
+      ;;
+  esac
+  mkdir -p "$(dirname "$CONFIG")"
+  {
+    printf '# lol-on-linux configuration (edit REGION to change the install region)\n'
+    printf 'REGION=%s\n' "$region"
+    printf 'RCLOL_REGION=%s\n' "$(printf '%s' "$region" | tr '[:lower:]' '[:upper:]')"
+    printf 'RCLOL_LOCALE=%s\n' "$RCLOL_LOCALE"
+  } > "$CONFIG"
+  RCLOL_REGION=$(printf '%s' "$region" | tr '[:lower:]' '[:upper:]')
+  export RCLOL_REGION
+
+  echo "lol-on-linux: downloading Riot's official installer ($region) - this is Riot's own file"
+  mkdir -p "$MINI/build/installer"
+  bash "$MINI/build/runtime/tools/fetch-installer.sh" "$region" "$MINI/build/installer"
+  unzip -q -o "$MINI/build/installer/live.$region.zip" -d "$MINI/build/installer"
+  launcher="$MINI/build/installer/Install League of Legends $region.app/Contents/MacOS/RiotClientServices"
+  if [ ! -x "$launcher" ]; then
+    echo "lol-on-linux: expected installer not found at: $launcher" >&2
+    exit 1
+  fi
+  RIOT_LAUNCHER_HOST=$launcher
+  export RIOT_LAUNCHER_HOST
+  sh "$MINI/scripts/run.sh" || true
+  unset RIOT_LAUNCHER_HOST
+  if [ ! -d "$DPREFIX/Users/Shared/Riot Games/Riot Client.app/Contents/MacOS" ]; then
+    echo 'lol-on-linux: the installer exited without installing the Riot Client.' >&2
+    echo "Check its logs under $DPREFIX/Users/<user>/Library/Logs/Riot Games/" >&2
+    exit 1
+  fi
+  echo 'lol-on-linux: Riot Client installed - starting it now.'
+  exec_game
+}
+
+exec_game() {
+  load_config
+  cd "$MINI"
+  exec sh scripts/run.sh
+}
+
+doctor() {
+  echo "lol-on-linux $(payload_version) (upstream $(payload_commit))"
+  echo "payload:  $LIB"
+  echo "kernel:   $(uname -r)"
+  echo "libc:     $(getconf GNU_LIBC_VERSION 2>/dev/null || echo 'non-glibc (unsupported)')"
+  echo "distro:   $(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | tr -d '"' | head -n 1)"
+  echo "session:  ${XDG_SESSION_TYPE:-unknown} DISPLAY=${DISPLAY:-unset}"
+  echo "prefix:   $DPREFIX"
+  if command -v lspci >/dev/null 2>&1; then
+    echo 'gpu:'
+    lspci 2>/dev/null | grep -Ei 'vga|3d|display' | sed 's/^/  /' || true
+  fi
+  if [ -d /usr/share/vulkan/icd.d ]; then
+    echo 'vulkan icds:'
+    find /usr/share/vulkan/icd.d -maxdepth 1 -name '*.json' 2>/dev/null | sed 's|.*/|  |' || true
+  fi
+  if [ -f "$MINI/.payload-version" ]; then
+    echo "state:    mini-repo ready ($(cat "$MINI/.payload-version"))"
+  else
+    echo 'state:    mini-repo not prepared yet (run --first-run)'
+  fi
+  if [ -d "$DPREFIX/Users/$(id -un)/RuntimeLibraries" ]; then
+    echo 'state:    runtime overlays installed'
+  else
+    echo 'state:    runtime overlays not installed yet (run --first-run)'
+  fi
+  if game_installed; then
+    echo 'game:     Riot Client found in the prefix'
+  else
+    echo 'game:     Riot Client not installed yet (use --install-game)'
+  fi
+}
+
+verify() {
+  first_run
+  darling shell /usr/bin/true
+  user=$(id -un)
+  [ -d "$MINI/build/runtime/tools" ] || { echo 'verify: rendered tools missing' >&2; exit 1; }
+  [ -f "$DPREFIX/Users/$user/RuntimeLibraries/libsystem_c.dylib" ] || { echo 'verify: runtime overlays missing' >&2; exit 1; }
+  echo 'verify: OK'
+}
+
+case "${1:-}" in
+  --help|-h|help)
+    usage
+    ;;
+  --version)
+    echo "lol-on-linux $(payload_version)"
+    ;;
+  --first-run)
+    first_run
+    ;;
+  --verify)
+    verify
+    ;;
+  --doctor)
+    doctor
+    ;;
+  --install-game)
+    first_run >/dev/null
+    install_game
+    ;;
+  ""|--launch)
+    first_run
+    if game_installed; then
+      exec_game
+    fi
+    echo 'lol-on-linux: Riot Client is not installed in the prefix yet.'
+    if [ -t 0 ]; then
+      printf "Install it now with Riot's official installer? [Y/n] "
+      read -r answer || answer=
+    else
+      answer=y
+    fi
+    case "${answer:-y}" in
+      n|N|no|NO)
+        echo 'Run "lol-on-linux --install-game" when you are ready.'
+        ;;
+      *)
+        install_game
+        ;;
+    esac
+    ;;
+  *)
+    echo "lol-on-linux: unknown option: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,10 @@
+build/
+build-local/
+out/
+*.tar.zst
+*.deb
+*.rpm
+*.pkg.tar.zst
+*.xbps
+__pycache__/
+*.pyc

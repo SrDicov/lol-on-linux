@@ -1,0 +1,35 @@
+name: check-upstream
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare pinned commit with upstream main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pinned=$(python3 -c 'import json;print(json.load(open("upstream.lock"))["commit"])')
+          latest=$(curl -fsSL https://api.github.com/repos/lucannez64/darling-lol/commits/main | jq -r .sha)
+          echo "pinned=$pinned"
+          echo "latest=$latest"
+          if [ "$pinned" = "$latest" ]; then
+            echo 'upstream unchanged'
+            exit 0
+          fi
+          title="upstream darling-lol moved: ${latest:0:12}"
+          if gh issue list --state open --search "$title" --json title --jq '.[].title' | grep -qF "$title"; then
+            echo 'issue already open'
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(printf 'Pinned commit: %s\nUpstream main: %s\n\nWhen a release build passes on the new commit, bump upstream.lock via PR and close this issue.\n' "$pinned" "$latest")"

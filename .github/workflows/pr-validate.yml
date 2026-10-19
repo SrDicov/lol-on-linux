@@ -1,0 +1,39 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static checks
+        run: |
+          set -e
+          python3 - <<'EOF'
+          import json
+          with open("upstream.lock") as fh:
+              data = json.load(fh)
+          for key in ("repo", "commit", "date"):
+              assert data.get(key), f"upstream.lock missing {key}"
+          print("upstream.lock OK:", data["commit"])
+          EOF
+          for f in runtime/lol-on-linux runtime/first-run.sh install-remote.sh; do
+            [ -f "$f" ] || continue
+            sh -n "$f"
+            shellcheck -s sh "$f"
+          done
+          for f in ci/*.sh packaging/*/*.sh tests/*.sh; do
+            [ -f "$f" ] || continue
+            shellcheck "$f"
+          done
+          find ci packaging -name '*.py' -print0 | xargs -0 -r -n1 python3 -m py_compile
+
+      - name: Unit tests
+        run: |
+          sh tests/test-normalize-flags.sh
+          [ -f tests/test-install-remote.sh ] && sh tests/test-install-remote.sh

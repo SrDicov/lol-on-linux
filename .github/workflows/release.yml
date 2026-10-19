@@ -1,0 +1,211 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (YYYY.MM.DD). Empty = today (UTC).'
+        required: false
+        default: ''
+      publish:
+        description: 'Create the GitHub release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(date -u +%Y.%m.%d)" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The payload is built from a pinned darling-lol commit; the base runtime and
+  # the overlays are compiled on the runner, then packaged. Ubuntu 22.04 keeps
+  # the glibc 2.35 / GCC 11 floor fixed no matter what the default runner ships.
+  payload:
+    needs: meta
+    runs-on: ubuntu-22.04
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/lib/jvm /usr/share/swift /usr/local/.ghcup
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Build payload
+        run: |
+          mkdir -p out
+          ci/ci-build.sh out "${{ needs.meta.outputs.version }}"
+
+      - name: Show payload
+        run: ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload
+          path: |
+            out/payload.tar.zst
+            out/payload.tar.zst.sha256
+          if-no-files-found: error
+
+  packages:
+    needs: [meta, payload]
+    runs-on: ubuntu-latest
+    # Each format is built inside its own distro container as root, so the
+    # package tools are the real ones (dpkg-deb, rpmbuild, bsdtar, xbps-create)
+    # and the files inside the packages end up owned by root:root.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - format: deb
+            image: debian:12
+            script: packaging/deb/make-deb.sh
+            pre: 'true'
+          - format: rpm
+            image: fedora:latest
+            script: packaging/rpm/make-rpm.sh
+            pre: 'dnf install -y rpm-build zstd'
+          - format: arch
+            image: archlinux:latest
+            script: packaging/arch/make-pkg.sh
+            pre: 'pacman -Syu --noconfirm && pacman -S --noconfirm --needed libarchive zstd'
+          - format: void
+            image: ghcr.io/void-linux/void-glibc-full
+            script: packaging/void/make-xbps.sh
+            pre: 'xbps-install -Sy bash zstd'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload
+          path: out
+
+      - name: Build ${{ matrix.format }} package
+        env:
+          IMG: ${{ matrix.image }}
+          PRE: ${{ matrix.pre }}
+          SCRIPT: ${{ matrix.script }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD:/work" -w /work "$IMG" \
+            sh -c "$PRE && bash /work/$SCRIPT --payload /work/out/payload.tar.zst --version $VERSION --out /work/dist"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.format }}
+          path: dist/*
+          if-no-files-found: error
+
+  smoke:
+    needs: [meta, packages]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - format: deb
+            image: debian:12
+          - format: rpm
+            image: fedora:latest
+          - format: arch
+            image: archlinux:latest
+          - format: void
+            image: ghcr.io/void-linux/void-glibc-full
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.format }}
+          path: dist
+
+      - name: Smoke test in ${{ matrix.image }}
+        env:
+          FMT: ${{ matrix.format }}
+          IMG: ${{ matrix.image }}
+        run: |
+          pre=''
+          if [ "$FMT" = void ]; then
+            pre='xbps-install -Sy bash >/dev/null;'  # Void images have no bash
+          fi
+          # --privileged: Darling mounts an overlayfs at the prefix and ptraces.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            --privileged \
+            "$IMG" \
+            sh -c "$pre bash -lc \"ci/smoke-test.sh --format $FMT --package /work/dist/*\""
+
+  release:
+    needs: [meta, payload, packages, smoke]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate manifest and checksums
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          COMMIT=$(python3 -c 'import json;print(json.load(open("upstream.lock"))["commit"])')
+          python3 ci/make-manifest.py \
+            --dir dist \
+            --version "$VERSION" \
+            --commit "$COMMIT" \
+            --url-base "https://github.com/${{ github.repository }}/releases/download/v$VERSION" \
+            --out dist/manifest.json
+          ( cd dist && sha256sum ./* > SHA256SUMS )
+          cat dist/manifest.json
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          COMMIT=$(python3 -c 'import json;print(json.load(open("upstream.lock"))["commit"])')
+          cat > /tmp/notes.md <<EOF
+          Prebuilt runtime packages, built from darling-lol @ ${COMMIT:0:12}.
+
+          ### Install
+          \`\`\`sh
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install-remote.sh | bash
+          \`\`\`
+
+          Then start **League of Legends (lol-on-linux)** from the menu; the first
+          launch downloads Riot's official installer (you need a Riot account and
+          ~35 GB of disk).
+
+          ### WARNING
+          This project can get your account permanently banned. Do not cheat, do
+          not play ranked, do not use your main account. Not affiliated with Riot
+          Games. No Riot content is distributed here.
+          EOF
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" --title "lol-on-linux $VERSION" --latest \
+              --notes-file /tmp/notes.md dist/*
+          fi

@@ -1,0 +1,18 @@
+Package: lol-on-linux
+Version: @VERSION@
+Architecture: amd64
+Maintainer: SrDicov <noreply@users.noreply.github.com>
+Installed-Size: @INSTALLED_SIZE@
+Section: games
+Priority: optional
+Homepage: https://github.com/SrDicov/lol-on-linux
+Depends: libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 | libasound2t64, libpulse0, python3, curl, unzip
+Recommends: gamemode, xwayland
+Description: Unofficial runtime to run Riot's macOS League of Legends client on Linux
+ lol-on-linux runs Riot's official macOS League of Legends client on Linux
+ through the Darling compatibility layer. It ships a prebuilt Darling runtime
+ plus the per-user compatibility overlays; the game itself is downloaded and
+ installed by Riot's own installer on first launch.
+ .
+ WARNING: using this project can get your account permanently banned. This is
+ an unofficial project and is not affiliated with Riot Games.

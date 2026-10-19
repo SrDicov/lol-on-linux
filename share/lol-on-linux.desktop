@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=League of Legends (lol-on-linux)
+GenericName=League of Legends client (unofficial, via Darling)
+Comment=Launch Riot's macOS League client through Darling. Unofficial; using it may get your account banned.
+Exec=lol-on-linux
+Icon=lol-on-linux
+Terminal=false
+Categories=Game;
+Keywords=League;Riot;Darling;
+StartupNotify=true

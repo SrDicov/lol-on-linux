@@ -1,0 +1,57 @@
+# RPM spec for the lol-on-linux payload wrapper.
+# Rendered by packaging/rpm/make-rpm.sh; the two @TOKENS@ are substituted with
+# plain sed (never with rpmbuild macros):
+#   @VERSION@ -> package version, YYYY.MM.DD (RPM Version may not contain '-')
+#   @PAYLOAD@ -> absolute path of the payload tar (informational; the real
+#                value is passed at build time as --define payload_path)
+
+Name:           lol-on-linux
+Version:        @VERSION@
+Release:        1
+Summary:        League of Legends client on x86-64 Linux via Darling
+License:        GPL-3.0
+URL:            https://github.com/SrDicov/lol-on-linux
+BuildArch:      x86_64
+BuildRoot:      %{_tmppath}/lol-on-linux-%{version}
+AutoReqProv:    no
+
+Requires:       libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip
+Recommends:     gamemode
+
+%description
+Run the macOS League of Legends client on x86-64 Linux via Darling.
+Installs the prebuilt payload under /usr/local; per-user setup happens on
+first run. Contains no Riot game data.
+
+%build
+# Nothing to build: the payload ships prebuilt binaries and is repackaged
+# exactly as-is.
+
+%install
+mkdir -p %{buildroot}
+# payload_path is defined by make-rpm.sh as the absolute payload tar; GNU tar
+# auto-detects the zstd compression from the .tar.zst suffix. The payload has
+# a single top-level directory, which --strip-components=1 removes so the
+# tree (usr/local/...) lands directly in the buildroot.
+tar -xpf %{payload_path} -C %{buildroot} --strip-components=1
+
+%files
+# Exact paths, NOT /usr/local/**: a wildcards %files list would package
+# whatever happens to be in the buildroot and silently pass over payload
+# layout changes (dropped or renamed files ship unnoticed), and it would
+# record ownership of broad /usr/local paths that other software may also
+# install into, causing file conflicts at install time. Exact paths make a
+# payload-layout change fail the build loudly instead.
+/usr/local/bin/darling
+/usr/local/bin/darlingserver
+/usr/local/bin/darling-coredump
+/usr/local/bin/lol-on-linux
+/usr/local/libexec/darling
+/usr/local/lib/lol-on-linux
+/usr/local/share/applications/lol-on-linux.desktop
+/usr/local/share/icons/hicolor/scalable/apps/lol-on-linux.svg
+/usr/local/share/doc/lol-on-linux
+
+%changelog
+* Sun Sep 27 2026 SrDicov <noreply@users.noreply.github.com> @VERSION@-1
+- Initial payload-based package.

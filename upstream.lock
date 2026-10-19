@@ -1,0 +1,6 @@
+{
+  "repo": "https://github.com/lucannez64/darling-lol",
+  "commit": "e287abb5d6e1fea4fa29c2ba15050a96c4554fa3",
+  "date": "2026-10-18",
+  "note": "Pin used for lol-on-linux release builds; bump via PR after a successful release build on the new commit."
+}

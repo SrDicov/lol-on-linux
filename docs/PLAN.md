@@ -17,11 +17,11 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 | Todo lo gráfico/audio/framework (`RuntimeLibraries`, `RuntimeFrameworks` por usuario, ~28 MB) es **Mach-O** generado por `install-runtime.sh` → produce lo que el árbol `build/` compiló | Es binario distro-independiente; el plan es **precompilarlo en CI y copiarlo en el primer uso** (sin compilar en el PC del usuario) |
 | El pipeline de overlays (`install-riot-presentation-runtime.sh`, `install-riot-gpu-runtime.sh`) hace `make`/`clang` sobre `build/darling-src` | En CI se ejecuta completo con un `DPREFIX` de staging; en el usuario solo se **copian** los resultados |
 | `tools/*.py` de runtime usan solo **stdlib** (`requirements.txt` es para checks offline) | El paquete solo necesita `python3` |
-| `-march=native` aparece en **19 puntos** de `scripts/` y `tools/` | CI debe normalizar flags (`-march=x86-64`) y verificar que no quede ninguno |
+| `-march=native` aparece en **19 puntos** de `scripts/` y `tools/` | CI debe normalizar flags (`-march=x86-64-v2`) y verificar que no quede ninguno |
 | `build.sh` usa `CMAKE_INSTALL_PREFIX=/usr/local`; `riot-desktop-entry.py` ya genera entrada `.desktop` + icono SVG original (y usa el `.icns` real del juego si está instalado) | Se reutiliza todo; el árbol entero queda en `/usr/local` (compatible con sistemas inmutables tipo Silverblue/Bazzite, donde `/usr/local` es la zona mutable) |
 | Kernel **≥ 5.14** obligatorio y x86-64 (32-bit ABI descartada por el patch de OpenDirectory) | Corta naturalmente a Ubuntu 20.04 / Debian 11: la base soportada es glibc ≥ 2.35 (Ubuntu 22.04, Debian 12) |
 
-**Consecuencia arquitectónica principal:** un **único build genérico por release** (contenedor `ubuntu:22.04` + LLVM 23, `-march=x86-64`, glibc 2.35, libstdc++ GCC 11) sirve para las 5 familias. Los paquetes por distro son **reempaquetados del mismo payload** con metadata propia — no 8 compiladas completas.
+**Consecuencia arquitectónica principal:** un **único build genérico por release** (contenedor `ubuntu:22.04` + LLVM 23, `-march=x86-64-v2`, glibc 2.35, libstdc++ GCC 11) sirve para las 5 familias. Los paquetes por distro son **reempaquetados del mismo payload** con metadata propia — no 8 compiladas completas.
 
 ---
 
@@ -32,7 +32,7 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 **Job pesado (1 solo):**
 1. Contenedor `ubuntu:22.04`; instala deps de upstream + LLVM/Clang 23 (tarball oficial LLVM, fallback `apt.llvm.org`).
 2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). Cache de fuentes (`actions/cache`) por SHA upstream.
-3. **Normaliza flags**: `sed -i 's/-march=native/-march=x86-64/g'` sobre `scripts/ tools/` + verificación de 0 ocurrencias restantes.
+3. **Normaliza flags**: `sed -i 's/-march=native/-march=x86-64-v2/g'` sobre `scripts/ tools/` + verificación de 0 ocurrencias restantes.
 4. `build.sh` con `JOBS` del runner → `cmake --install` a **DESTDIR de staging** (base runtime).
 5. Overlays: `install-runtime.sh` con `DPREFIX=/staging/prefix`, `RIOT_GUEST_HOME=/staging/prefix/Users/loluser` (usuario ficticio) → produce `RuntimeLibraries/`, `RuntimeFrameworks/`, overrides del prefix.
 6. Recompila `libDarlingXShm.dylib` con la **ruta final** horneada (`/usr/local/lib/lol-on-linux/libdarling-xshm.so`) en vez de la ruta de build.
@@ -132,7 +132,7 @@ Extras: `--dry-run`, `--check` (solo auditoría), `--no-drivers`; log en `/tmp/l
 | Void | `.xbps` | Void **glibc** | Void-musl: no soportada (el runtime es glibc) |
 | Exóticas | tarball portable | cualquier x86-64 con glibc ≥ 2.35 y kernel ≥ 5.14 | instalación manual asistida |
 
-Hardware: cualquier x86-64 (build baseline `-march=x86-64`); GPU con Vulkan hardware. AMD RADV es lo único validado por upstream — Intel/AMD-otras/NVIDIA salen como "no validado" con mensajes honestos.
+Hardware: cualquier x86-64 (build baseline `-march=x86-64-v2`); GPU con Vulkan hardware. AMD RADV es lo único validado por upstream — Intel/AMD-otras/NVIDIA salen como "no validado" con mensajes honestos.
 
 ---
 
@@ -145,7 +145,7 @@ lol-on-linux/
 ├── LICENSE                        # GPL-3.0 (hereda del tooling upstream)
 ├── README.md                      # qué es, disclaimer de ban, comando de instalación
 ├── ci/
-│   ├── normalize-flags.sh         # sed -march=x86-64 + verificación
+│   ├── normalize-flags.sh         # sed -march=x86-64-v2 + verificación
 │   ├── build-payload.sh           # pipeline pesado completo → payload.tar.zst
 │   └── smoke-test.sh              # instalar + --verify (dentro de contenedor)
 ├── packaging/

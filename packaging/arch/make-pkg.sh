@@ -83,9 +83,10 @@ depend = bash
 depend = curl
 depend = unzip
 depend = libxml2
-depend = libzstd
+depend = zstd
 depend = zlib
 depend = libffi
+depend = libbsd
 optdepend = gamemode: GPU/latency nice-to-haves
 EOF
 

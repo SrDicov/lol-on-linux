@@ -113,7 +113,19 @@ jobs:
           name: payload
           path: out
 
+      - name: Restore an identical package
+        id: pkg-cache
+        uses: actions/cache@v4
+        with:
+          path: dist
+          # A package is a pure function of the payload bytes and this format's
+          # own packager scripts. Keying on both means a changed payload rebuilds
+          # it (the files inside differ) while a smoke-only fix reuses the very
+          # same package instead of running dpkg-deb/rpmbuild/bsdtar/xbps again.
+          key: pkg-${{ matrix.format }}-v1-${{ hashFiles(format('packaging/{0}/**', matrix.format)) }}-${{ hashFiles('out/payload.tar.zst') }}
+
       - name: Build ${{ matrix.format }} package
+        if: steps.pkg-cache.outputs.cache-hit != 'true'
         env:
           IMG: ${{ matrix.image }}
           PRE: ${{ matrix.pre }}
@@ -172,17 +184,58 @@ jobs:
             "$IMG" \
             sh -c "$pre bash -lc \"ci/smoke-test.sh --format $FMT --package /work/dist/*\""
 
+      # Only the release job reads these: a marker exists exactly when this
+      # format built and passed, so one broken distro no longer blocks the
+      # packages that are ready.
+      - name: Mark ${{ matrix.format }} as validated
+        run: echo "${{ matrix.format }} passed on ${{ matrix.image }} at $(date -u +%FT%TZ)" > smoke-ok
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-ok-${{ matrix.format }}
+          path: smoke-ok
+          if-no-files-found: error
+
   release:
     needs: [meta, payload, packages, smoke]
-    if: ${{ inputs.publish }}
+    # Publishes whatever built and passed, even when another distro did not:
+    # waiting for all four turns one broken container into no release at all.
+    if: ${{ !cancelled() && inputs.publish && needs.payload.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          pattern: pkg-*
+          path: pkgs
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: smoke-ok-*
+          path: markers
           merge-multiple: true
+        # No marker at all means nothing passed; the next step says so in plain
+        # words instead of failing inside the download action.
+        continue-on-error: true
+
+      - name: Keep only the formats whose smoke test passed
+        run: |
+          mkdir -p dist
+          published=''
+          for dir in pkgs/pkg-*; do
+            fmt=${dir#pkgs/pkg-}
+            if [ -e "markers/$fmt" ]; then
+              cp "$dir"/* dist/
+              published="$published $fmt"
+            else
+              echo "release: $fmt built but did not pass its smoke test; not publishing it"
+              echo "### $fmt: skipped (smoke test failed)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          [ -n "$published" ] || { echo "release: nothing passed its smoke test" >&2; exit 1; }
+          echo "RELEASE_FORMATS=$published" >> "$GITHUB_ENV"
+          ls -lh dist
 
       - name: Generate manifest and checksums
         run: |
@@ -205,6 +258,7 @@ jobs:
           COMMIT=$(python3 -c 'import json;print(json.load(open("upstream.lock"))["commit"])')
           cat > /tmp/notes.md <<EOF
           Prebuilt runtime packages, built from darling-lol @ ${COMMIT:0:12}.
+          Formats in this release:${RELEASE_FORMATS}.
 
           ### Install
           \`\`\`sh

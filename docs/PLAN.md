@@ -31,7 +31,7 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 
 **Job pesado (1 solo):**
 1. Contenedor `ubuntu:22.04`; instala deps de upstream + LLVM/Clang 22 desde `apt.llvm.org` (los tarballs oficiales son estáticos y iridium necesita la `libLLVM.so`; el payload la incluye porque ninguna distro trae la major exacta).
-2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). Cache de fuentes (`actions/cache`) por SHA upstream.
+2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). El payload completo se cachea (`actions/cache`) con clave = pin upstream + scripts del build + `runtime/**` + versión: cambiar el empaquetado o el smoke reutiliza la compilación, cambiar la receta del payload no.
 3. **Normaliza flags**: `sed -i 's/-march=native/-march=x86-64-v2/g'` sobre `scripts/ tools/` + verificación de 0 ocurrencias restantes.
 4. `build.sh` con `JOBS` del runner → `cmake --install` a **DESTDIR de staging** (base runtime).
 5. Overlays: `install-runtime.sh` con `DPREFIX=/staging/prefix`, `RIOT_GUEST_HOME=/staging/prefix/Users/loluser` (usuario ficticio) → produce `RuntimeLibraries/`, `RuntimeFrameworks/`, overrides del prefix.
@@ -49,9 +49,11 @@ Riesgo controlado: techo de **6 h por job**. Mitigación: cache de fuentes + re-
 | `.pkg.tar.zst` | Arch (rolling + derivadas) | `archlinux:latest` |
 | `.xbps` | Void glibc | `void-linux/void-glibc` |
 
-Smoke test = instalar el paquete → `lol-on-linux --verify` (render de tools + `darling shell /usr/bin/true` headless, con `xvfb-run` si hiciera falta) → validar `.desktop`. **CI nunca descarga nada de Riot ni automatiza el cliente.**
+Smoke test = instalar el paquete → comprobar `darling` setuid root → `ldconfig`/`dlopen` de la libLLVM embebida → `lol-on-linux --verify` como usuario normal. **CI nunca descarga nada de Riot ni automatiza el cliente.**
 
-**Job release:** agrega assets + `manifest.json` + `SHA256SUMS`:
+Cada job ligero cachea **su** paquete con clave = sha256 del payload + scripts de ese formato: el mismo payload y el mismo empaquetador reutilizan el paquete ya construido en vez de ejecutar `dpkg-deb`/`rpmbuild`/`bsdtar`/`xbps-create` otra vez.
+
+**Job release:** agrega assets + `manifest.json` + `SHA256SUMS`. Publica solo los formatos que construyeron **y** pasaron su smoke (cada job deja un marcador `smoke-ok-<formato>`): un contenedor roto ya no deja sin release a las distros que sí funcionan, y las notas listan qué formatos van incluidos.
 
 ```json
 {

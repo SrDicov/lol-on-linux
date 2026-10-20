@@ -11,6 +11,10 @@ on:
         description: 'Create the GitHub release'
         type: boolean
         default: true
+      payload_run_id:
+        description: 'Reuse the payload artifact of this run instead of rebuilding (packaging-only fixes)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -81,8 +85,19 @@ jobs:
           path: payload-work/darling-lol/build
           key: base-runtime-v1-jammy-llvm22-${{ steps.stage-key.outputs.key }}
 
+      # Escape hatch for packaging-only fixes: a payload already built from these
+      # same inputs is byte-identical, so recompiling it to change one packager
+      # buys nothing. Every distro still runs its smoke test on the result.
+      - name: Reuse a payload artifact from another run
+        if: steps.payload-cache.outputs.cache-hit != 'true' && inputs.payload_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          gh run download "${{ inputs.payload_run_id }}" --repo "$GITHUB_REPOSITORY" -n payload -D out
+
       - name: Build payload
-        if: steps.payload-cache.outputs.cache-hit != 'true'
+        if: steps.payload-cache.outputs.cache-hit != 'true' && inputs.payload_run_id == ''
         env:
           LOL_SKIP_BUILD: ${{ steps.stage-cache.outputs.cache-hit }}
         run: |

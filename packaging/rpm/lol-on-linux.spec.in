@@ -66,6 +66,9 @@ ldconfig 2>/dev/null || :
 /usr/local/bin/lol-on-linux
 /usr/local/libexec/darling
 /usr/local/lib/lol-on-linux
+# darling registers its Mach-O handler through binfmt_misc (systemd reads
+# /usr/local/lib/binfmt.d too); it lives outside lib/lol-on-linux.
+/usr/local/lib/binfmt.d/darling.conf
 /usr/local/share/applications/lol-on-linux.desktop
 /usr/local/share/icons/hicolor/scalable/apps/lol-on-linux.svg
 /usr/local/share/doc/lol-on-linux

@@ -32,7 +32,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist
-          docker run --rm --privileged -v "$GITHUB_WORKSPACE:/work" -w /work \
+          docker run --rm --privileged -e VERSION -v "$GITHUB_WORKSPACE:/work" -w /work \
             ghcr.io/void-linux/void-glibc-full \
             sh -c 'xbps-install -Sy bash zstd >/dev/null 2>&1;
                    exec bash -lc "packaging/void/make-xbps.sh --payload out/payload.tar.zst --version $VERSION --out dist &&

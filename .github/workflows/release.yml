@@ -46,7 +46,22 @@ jobs:
           sudo docker image prune -af || true
           df -h /
 
+      - name: Restore a payload built from the same inputs
+        id: payload-cache
+        uses: actions/cache@v4
+        with:
+          path: out
+          # Keyed on what the payload is actually built from: the upstream pin,
+          # the CI scripts (toolchain, header patch, build) and the runtime
+          # pieces copied into it. packaging/ and docs/ are deliberately out, so
+          # a packaging-only fix reuses this payload instead of spending ~25
+          # minutes recompiling Darling. The literal tokens cover the runner
+          # image and the LLVM major; bump them when those change underneath us.
+          # The version is in the key because payload-info.json embeds it.
+          key: payload-v1-jammy-llvm22-${{ hashFiles('upstream.lock', 'ci/**', 'runtime/**') }}-${{ needs.meta.outputs.version }}
+
       - name: Build payload
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p out
           ci/ci-build.sh out "${{ needs.meta.outputs.version }}"

@@ -344,7 +344,12 @@ fi
 # walk the graph and bundle every library that is not on the list of ones every
 # distribution provides under the same name, rather than naming sonames here
 # and rewriting the list each time one of them moves.
-portable_libs=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libz.so.1 libzstd.so.1 liblzma.so.5 libffi.so.8 libtinfo.so.6 ld-linux-x86-64.so.2 "
+# Only the C/C++ runtime and the loader are assumed to be there. Everything
+# else is shipped: Void still carries libffi 3.3 (soname .7, not .8) and a
+# bash that does not pull ncurses' libtinfo, and the other distributions move
+# sonames on their own schedule. A dlopen() that asks for a missing library
+# fails outright, so the payload has to be self-contained here.
+portable_libs=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libdl.so.2 libpthread.so.0 librt.so.1 ld-linux-x86-64.so.2 "
 bundle_llvm_lib() { # $1 = soname to bundle, then recurse into its NEEDED entries
   case "$portable_libs" in
     *" $1 "*) return 0 ;;
@@ -381,6 +386,11 @@ copy_license libz3-4 Z3-LICENSE.txt
 copy_license libxml2 LIBXML2-LICENSE.txt
 copy_license libbsd0 LIBBSD-LICENSE.txt
 copy_license libicu70 ICU-LICENSE.txt
+copy_license zlib1g ZLIB-LICENSE.txt
+copy_license libzstd1 ZSTD-LICENSE.txt
+copy_license liblzma5 LZMA-LICENSE.txt
+copy_license libffi8 LIBFFI-LICENSE.txt
+copy_license libtinfo6 NCURSES-LICENSE.txt
 
 cat > "$payload/usr/local/lib/lol-on-linux/payload-info.json" <<EOF
 {

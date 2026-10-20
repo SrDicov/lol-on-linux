@@ -57,7 +57,7 @@ jobs:
 
       - name: Restore a payload built from the same inputs
         id: payload-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out
           key: payload-v3-jammy-llvm22-${{ steps.payload-key.outputs.key }}-${{ needs.meta.outputs.version }}
@@ -76,7 +76,7 @@ jobs:
       - name: Restore the compiled base runtime
         id: stage-cache
         if: steps.payload-cache.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: payload-work/darling-lol/build
           key: base-runtime-v1-jammy-llvm22-${{ steps.stage-key.outputs.key }}
@@ -88,6 +88,25 @@ jobs:
         run: |
           mkdir -p out
           ci/ci-build.sh out "${{ needs.meta.outputs.version }}"
+
+      # restore/save instead of the combined action: the combined one writes
+      # its entry even when a later step failed, so one broken build (or a
+      # half-assembled payload) would be restored as if it were good.
+      - name: Save the compiled base runtime
+        if: steps.payload-cache.outputs.cache-hit != 'true' && steps.stage-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: payload-work/darling-lol/build
+          key: ${{ steps.stage-cache.outputs.cache-primary-key }}
+
+      - name: Save the payload
+        if: steps.payload-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: out
+          key: ${{ steps.payload-cache.outputs.cache-primary-key }}
 
       - name: Show payload
         run: ls -lh out

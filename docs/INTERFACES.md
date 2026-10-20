@@ -63,14 +63,16 @@ as `name>=1`):
 
 | family | runtime deps |
 |---|---|
-| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip, libxml2, libzstd1, zlib1g, libffi8, libbsd0 — Recommends: gamemode, xwayland |
-| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip, libxml2, libzstd, zlib, libffi, libbsd — Recommends: gamemode |
-| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip, libxml2, zstd, zlib, libffi, libbsd — optdepend: gamemode |
-| void | libstdc++>=1, libX11>=1, libxcb>=1, libXext>=1, alsa-lib>=1, pulseaudio>=1, python3>=1, bash>=1, curl>=1, unzip>=1, libxml2>=1, libzstd>=1, zlib>=1, libffi>=1, libbsd>=1 |
+| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip, libxml2, libzstd1, zlib1g, libffi8 — Recommends: gamemode, xwayland |
+| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip, libxml2, libzstd, zlib, libffi — Recommends: gamemode |
+| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip, libxml2, zstd, zlib, libffi — optdepend: gamemode |
+| void | libstdc++>=1, libX11>=1, libxcb>=1, libXext>=1, alsa-lib>=1, pulseaudio>=1, python3>=1, bash>=1, curl>=1, unzip>=1, libxml2>=1, libzstd>=1, zlib>=1, libffi>=1 |
 
 (`libxcb-shm` ships inside the `libxcb` package on rpm/arch/void; Void's `pulseaudio`
 package carries the libs, hence the different name there; Arch names the libzstd
-package `zstd`. libbsd is what the bundled `libedit.so.2` itself links against.)
+package `zstd`. The rest of what `llvm/` links against is bundled by
+`build-payload.sh`, which walks the dependency graph and ships every soname that is
+not on its list of universally portable ones.)
 
 ## 3. Release manifest (`manifest.json`)
 

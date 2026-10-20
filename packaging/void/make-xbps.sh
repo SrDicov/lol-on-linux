@@ -89,7 +89,7 @@ mkdir -p "$work/repodir"
   -m "SrDicov <noreply@users.noreply.github.com>" \
   -l GPL-3.0 \
   -H https://github.com/SrDicov/lol-on-linux \
-  -D "libstdc++>=1 libX11>=1 libxcb>=1 libXext>=1 alsa-lib>=1 pulseaudio>=1 python3>=1 bash>=1 curl>=1 unzip>=1 libxml2>=1 libzstd>=1 zlib>=1 libffi>=1 libbsd>=1" \
+  -D "libstdc++>=1 libX11>=1 libxcb>=1 libXext>=1 alsa-lib>=1 pulseaudio>=1 python3>=1 bash>=1 curl>=1 unzip>=1 libxml2>=1 libzstd>=1 zlib>=1 libffi>=1" \
   "$work/pkg")
 
 built_list=$(find "$work/repodir" -maxdepth 1 -type f -name '*.xbps')

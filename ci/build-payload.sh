@@ -336,21 +336,34 @@ if [ "$llvm_soname" != "$llvm_libname" ]; then
   echo "build-payload: LLVM SONAME ${llvm_soname:-<none>} -> $llvm_libname"
   patchelf --set-soname "$llvm_libname" "$llvm_dir/$llvm_libname"
 fi
-# libLLVM was linked on jammy, so its DT_NEEDED entries name jammy's sonames.
-# Most travel well (libxml2.so.2, libzstd.so.1, libz.so.1, libffi.so.8), but
-# Debian's libedit is libedit.so.2 where upstream and Fedora ship libedit.so.0,
-# and bookworm's z3 is libz3.so.4 where newer z3 bumps the soname. Ship both
-# here instead of requiring those exact sonames from every distro; what they
-# need in turn (libtinfo.so.6, libstdc++.so.6, libc) is portable.
-for lib in libedit.so.2 libz3.so.4; do
-  libsrc=$(ldconfig -p | awk -v want="$lib" '$1 == want { print $NF; exit }')
+# libLLVM was linked on jammy, so its DT_NEEDED entries name jammy's sonames,
+# and several of those do not exist elsewhere: Debian's libedit is libedit.so.2
+# where upstream and Fedora ship libedit.so.0 (and it pulls libbsd and libmd),
+# z3's soname moves with its major, and Arch already ships a libxml2 with a
+# newer soname. A dlopen() that asks for a missing library fails outright, so
+# walk the graph and bundle every library that is not on the list of ones every
+# distribution provides under the same name, rather than naming sonames here
+# and rewriting the list each time one of them moves.
+portable_libs=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libz.so.1 libzstd.so.1 liblzma.so.5 libffi.so.8 libtinfo.so.6 ld-linux-x86-64.so.2 "
+bundle_llvm_lib() { # $1 = soname to bundle, then recurse into its NEEDED entries
+  case "$portable_libs" in
+    *" $1 "*) return 0 ;;
+  esac
+  [ -e "$llvm_dir/$1" ] && return 0
+  libsrc=$(ldconfig -p | awk -v want="$1" '$1 == want { print $NF; exit }')
   [ -n "$libsrc" ] || {
-    echo "build-payload: $lib not found (the build host needs libedit2 and libz3-4)" >&2
+    echo "build-payload: $1 is needed by the bundled libLLVM but is not installed here" >&2
     exit 1
   }
-  cp -Lf "$libsrc" "$llvm_dir/$lib"
-  chmod 755 "$llvm_dir/$lib"
-  echo "build-payload: bundled $lib ($(du -h "$llvm_dir/$lib" | cut -f1))"
+  cp -Lf "$libsrc" "$llvm_dir/$1"
+  chmod 755 "$llvm_dir/$1"
+  echo "build-payload: bundled $1 ($(du -h "$llvm_dir/$1" | cut -f1))"
+  for dep in $(LC_ALL=C readelf -d "$llvm_dir/$1" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
+    bundle_llvm_lib "$dep"
+  done
+}
+for dep in $(LC_ALL=C readelf -d "$llvm_dir/$llvm_libname" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
+  bundle_llvm_lib "$dep"
 done
 echo "build-payload: LLVM $llvm_version -> usr/local/lib/lol-on-linux/llvm/$llvm_libname ($(du -h "$llvm_dir/$llvm_libname" | cut -f1))"
 mkdir -p "$payload/etc/ld.so.conf.d"
@@ -365,6 +378,9 @@ copy_license() { # $1 = /usr/share/doc subdir pattern, $2 = destination name
 copy_license 'libllvm[0-9]*' LLVM-LICENSE.txt
 copy_license libedit2 LIBEDIT-LICENSE.txt
 copy_license libz3-4 Z3-LICENSE.txt
+copy_license libxml2 LIBXML2-LICENSE.txt
+copy_license libbsd0 LIBBSD-LICENSE.txt
+copy_license libicu70 ICU-LICENSE.txt
 
 cat > "$payload/usr/local/lib/lol-on-linux/payload-info.json" <<EOF
 {

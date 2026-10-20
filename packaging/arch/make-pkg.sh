@@ -86,7 +86,6 @@ depend = libxml2
 depend = zstd
 depend = zlib
 depend = libffi
-depend = libbsd
 optdepend = gamemode: GPU/latency nice-to-haves
 EOF
 

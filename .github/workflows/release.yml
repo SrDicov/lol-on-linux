@@ -160,9 +160,10 @@ jobs:
           IMG: ${{ matrix.image }}
         run: |
           pre=''
-          if [ "$FMT" = void ]; then
-            pre='xbps-install -Sy bash >/dev/null;'  # Void images have no bash
-          fi
+          case "$FMT" in
+            void) pre='xbps-install -Sy bash >/dev/null;' ;;  # Void images have no bash
+            rpm)  pre='dnf install -y util-linux >/dev/null;' ;;  # nor su/runuser
+          esac
           # --privileged: Darling mounts an overlayfs at the prefix and ptraces.
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \

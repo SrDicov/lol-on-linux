@@ -244,12 +244,12 @@ jobs:
       # format built and passed, so one broken distro no longer blocks the
       # packages that are ready.
       - name: Mark ${{ matrix.format }} as validated
-        run: echo "${{ matrix.format }} passed on ${{ matrix.image }} at $(date -u +%FT%TZ)" > smoke-ok
+        run: echo "${{ matrix.format }} passed on ${{ matrix.image }} at $(date -u +%FT%TZ)" > "smoke-ok-${{ matrix.format }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: smoke-ok-${{ matrix.format }}
-          path: smoke-ok
+          path: smoke-ok-${{ matrix.format }}
           if-no-files-found: error
 
   release:
@@ -281,7 +281,7 @@ jobs:
           published=''
           for dir in pkgs/pkg-*; do
             fmt=${dir#pkgs/pkg-}
-            if [ -e "markers/$fmt" ]; then
+            if [ -e "markers/smoke-ok-$fmt" ]; then
               cp "$dir"/* dist/
               published="$published $fmt"
             else

@@ -173,6 +173,22 @@ fi
 # ---- 5. render tools for the staging prefix ----------------------------------
 echo "build-payload: rendering tools (prefix=$stage/prefix, guest=$guest_user)"
 ( cd "$src" && python3 scripts/configure.py --guest-user "$guest_user" --prefix "$stage/prefix" )
+# ---- 5b. python 3.10 shim ----------------------------------------------------
+# Four upstream tools hash files with hashlib.file_digest(), which is Python
+# 3.11+. This job stays on jammy for the glibc 2.35 floor, where python3 is
+# 3.10, so rewrite that call to the portable equivalent (file_digest only adds
+# chunked reading; these artifacts are a few MB at most). The guard below keeps
+# a future upstream edit from resurfacing as an opaque AttributeError an hour
+# into the build.
+echo 'build-payload: rewriting hashlib.file_digest for python 3.10'
+( cd "$src" && sed -i \
+  's/hashlib\.file_digest(input, "sha256")\.hexdigest()/hashlib.sha256(input.read()).hexdigest()/' \
+  build/runtime/tools/*.py )
+if ( cd "$src" && grep -q 'hashlib\.file_digest' build/runtime/tools/*.py ); then
+  echo 'build-payload: upstream tools still call hashlib.file_digest (python 3.11+); teach this shim the new call' >&2
+  exit 1
+fi
+
 export DPREFIX="$stage/prefix"
 export RIOT_GUEST_HOME="$DPREFIX/Users/$guest_user"
 

@@ -96,7 +96,11 @@ built_list=$(find "$work/repodir" -maxdepth 1 -type f -name '*.xbps')
 built=${built_list%%$'\n'*}
 [ -n "$built" ] || { echo "make-xbps: xbps-create produced no .xbps" >&2; exit 1; }
 
-dest="$out/lol-on-linux_${ver}_1.x86_64.xbps"
+# Keep xbps-create's own file name: it is <name>-<version>_<rev>.<arch>.xbps and
+# xbps derives the archive it fetches from the pkgver, so renaming it to
+# lol-on-linux_... makes the transaction fail to checksum a file that is not
+# there.
+dest="$out/$(basename -- "$built")"
 mv -- "$built" "$dest"
 echo "make-xbps: wrote $dest" >&2
 echo "$dest"

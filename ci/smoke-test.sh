@@ -90,6 +90,16 @@ python3 -c "import ctypes, sys; ctypes.CDLL('$llvm_lib')" || {
 echo "smoke-test: bundled libLLVM loads by name ($llvm_lib)"
 
 echo 'smoke-test: verifying the runtime as a normal user (fresh HOME)'
+# setuid is not enough: the owner is the euid, and the payload is assembled as a
+# non-root user, so a wrong uid here breaks every launch only after the prefix
+# has been initialized.
+darling_uid=$(stat -c %u /usr/local/bin/darling)
+darling_mode=$(stat -c %a /usr/local/bin/darling)
+if [ "$darling_uid" != 0 ] || [ "$darling_mode" != 4755 ]; then
+  echo "smoke-test: /usr/local/bin/darling is not setuid root (uid $darling_uid, mode $darling_mode)" >&2
+  exit 1
+fi
+echo 'smoke-test: darling is setuid root'
 id -u loluser >/dev/null 2>&1 || useradd -m -s /bin/bash loluser
 if [ -e /.dockerenv ] || [ -e /run/.containerenv ]; then
   # Containers put the root filesystem on overlayfs, which cannot host the

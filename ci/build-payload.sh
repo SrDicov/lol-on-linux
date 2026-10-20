@@ -394,6 +394,10 @@ EOF
 
 # ---- 11. pack ----------------------------------------------------------------
 echo 'build-payload: packing payload.tar.zst'
-tar --zstd -C "$stage" -cf "$out_dir/payload.tar.zst" payload
+# --owner/--group: the payload is assembled as the runner user, but every file
+# it ships must be root-owned (darling is setuid, and a setuid file owned by
+# uid 1000 gives a non-root euid). The packagers extract with tar -p, so the
+# recorded ownership is what ends up in the packages.
+tar --zstd --owner=0 --group=0 --numeric-owner -C "$stage" -cf "$out_dir/payload.tar.zst" payload
 ( cd "$out_dir" && sha256sum payload.tar.zst > payload.tar.zst.sha256 )
 echo "build-payload: done: $out_dir/payload.tar.zst ($(du -h "$out_dir/payload.tar.zst" | cut -f1))"

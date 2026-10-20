@@ -75,7 +75,8 @@ jobs:
           - format: deb
             image: debian:12
             script: packaging/deb/make-deb.sh
-            pre: 'true'
+            # debian:12 has no zstd and the packager unpacks payload.tar.zst.
+            pre: 'apt-get update -qq && apt-get install -y -qq --no-install-recommends zstd'
           - format: rpm
             image: fedora:latest
             script: packaging/rpm/make-rpm.sh

@@ -5,6 +5,13 @@
 #   @PAYLOAD@ -> absolute path of the payload tar (informational; the real
 #                value is passed at build time as --define payload_path)
 
+# The payload is a prebuilt runtime plus a pseudo-macOS guest root, so Fedora's
+# brp post-processing must not touch it: brp-python-bytecompile aborts on the
+# guest's macOS scripts ("ambiguous python shebang in .../usr/bin/xattr"), and
+# brp-mangle-shebangs rewrites their #!/bin/sh into #!/usr/bin/sh, a path that
+# does not exist inside the guest. Strip/bytecompile have nothing to do here.
+%global __os_install_post %{nil}
+
 Name:           lol-on-linux
 Version:        @VERSION@
 Release:        1

@@ -56,5 +56,7 @@ jobs:
             echo "-- $f"; tail -30 "$f"
           done
           EOF
+          # The void image ships no bash; the script needs it for read -d.
           docker run --rm --privileged -v "$PWD/dist:/dist:ro" -v "$PWD/diag.sh:/diag.sh:ro" \
-            ghcr.io/void-linux/void-glibc-full bash /diag.sh
+            ghcr.io/void-linux/void-glibc-full \
+            sh -c 'xbps-install -Sy bash >/dev/null 2>&1; exec bash /diag.sh'

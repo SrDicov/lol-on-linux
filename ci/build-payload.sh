@@ -32,7 +32,50 @@ Usage: build-payload.sh --out DIR [options]
   --jobs N              parallel build jobs (default: nproc)
   --upstream-repo URL   darling-lol repository (default: upstream.lock)
   --upstream-commit SHA pin to build (default: upstream.lock)
+  --stage-key           print the base-runtime cache key and exit
+  --payload-key         print the payload cache key and exit
+
+The base runtime (patched sources + compiled tree) is what costs ~25 minutes.
+It depends only on the build recipe: the upstream pin, the toolchain, this
+repo's build patches and the build half of this script. --stage-key hashes
+exactly those, so a CI cache keyed on it survives assembly-only edits.
 EOF
+}
+
+lock_file="$repo_root/upstream.lock"
+lock_value() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$lock_file" "$1"
+}
+
+stage_key() {
+  {
+    cat "$lock_file" \
+      "$repo_root/ci/ci-build.sh" \
+      "$repo_root/ci/install-toolchain.sh" \
+      "$repo_root/ci/patch-old-kernel-headers.sh" \
+      "$repo_root/ci/normalize-flags.sh"
+    # Everything up to the assembly marker: checkout, flags, build. Editing the
+    # assembly below it keeps this key (and the cache) intact.
+    sed -n '1,/^# ---- 5\. /p' "$0"
+    grep -E '^(ID|VERSION_ID)=' /etc/os-release || true
+  } | sha256sum | cut -d' ' -f1
+}
+
+# The payload is the base runtime plus everything copied in below the assembly
+# marker: runtime/, the launcher glue and the docs it installs. Keying on those
+# means a packaging or docs edit outside the payload reuses it, while a real
+# input change (including a new version, which payload-info.json embeds) does
+# not.
+payload_key() {
+  {
+    stage_key
+    sed -n '/^# ---- 5\. /,$p' "$0"
+    find "$repo_root/runtime" -type f -print0 | sort -z | xargs -0 cat
+    cat "$repo_root/install-remote.sh" \
+        "$repo_root/share/lol-on-linux.desktop" \
+        "$repo_root/share/lol-on-linux.svg" \
+        "$repo_root/README.md" "$repo_root/LICENSE"
+  } | sha256sum | cut -d' ' -f1
 }
 
 out_dir=
@@ -56,6 +99,8 @@ while [ $# -gt 0 ]; do
     --jobs) jobs=${2:?--jobs needs a value}; shift 2 ;;
     --upstream-repo) upstream_repo=${2:?--upstream-repo needs a value}; shift 2 ;;
     --upstream-commit) upstream_commit=${2:?--upstream-commit needs a value}; shift 2 ;;
+    --stage-key) stage_key; exit 0 ;;
+    --payload-key) payload_key; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "build-payload: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -70,10 +115,6 @@ fi
 mkdir -p "$work_dir"
 work_dir=$(cd "$work_dir" && pwd)
 
-lock_file="$repo_root/upstream.lock"
-lock_value() {
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$lock_file" "$1"
-}
 if [ -z "$upstream_repo" ]; then upstream_repo=$(lock_value repo); fi
 if [ -z "$upstream_commit" ]; then upstream_commit=$(lock_value commit); fi
 echo "build-payload: version $version, upstream $upstream_repo @ $upstream_commit"
@@ -87,9 +128,23 @@ if [ -n "$reuse_dir" ]; then
   echo "build-payload: reusing checkout $src"
 else
   src="$work_dir/darling-lol"
-  echo "build-payload: cloning $upstream_repo"
-  git clone --quiet "$upstream_repo" "$src"
-  git -C "$src" checkout --quiet "$upstream_commit"
+  if [ -d "$src/.git" ]; then
+    echo "build-payload: reusing the checkout already at $src"
+  elif [ -d "$src" ]; then
+    # A restored base-runtime cache can leave build/ behind without the repo.
+    # Bring the tracked files back at the pin instead of cloning (git refuses a
+    # non-empty destination); build/ is ignored so the cached tree survives.
+    echo "build-payload: restoring the checkout over the cached build tree"
+    git -C "$src" init --quiet
+    git -C "$src" remote add origin "$upstream_repo" 2>/dev/null ||
+      git -C "$src" remote set-url origin "$upstream_repo"
+    git -C "$src" fetch --quiet --depth 1 origin "$upstream_commit"
+    git -C "$src" checkout --quiet --force FETCH_HEAD
+  else
+    echo "build-payload: cloning $upstream_repo"
+    git clone --quiet "$upstream_repo" "$src"
+    git -C "$src" checkout --quiet "$upstream_commit"
+  fi
   if command -v git-lfs >/dev/null 2>&1; then
     git lfs install --skip-repo >/dev/null 2>&1 || true
     ( cd "$src" && git lfs pull )
@@ -113,6 +168,8 @@ if [ ! -d "$src/build/venv" ]; then
     echo 'build-payload: warning: venv setup failed; continuing' >&2
 fi
 if [ "$skip_build" = 1 ]; then
+  [ -d "$src/build/darling-src" ] || {
+    echo 'build-payload: --skip-build needs an existing build tree' >&2; exit 1; }
   echo 'build-payload: --skip-build given; using the existing build tree'
 else
   if [ -n "$reuse_dir" ] && [ -z "${LOL_NORMALIZE_REUSE:-}" ]; then

@@ -58,4 +58,12 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
   git config --global --add safe.directory '*'
 fi
 
-"$repo_root/ci/build-payload.sh" --out "$out_dir" --version "$version"
+args=(--out "$out_dir" --version "$version")
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  # A fixed work dir lets the base-runtime cache restore the compiled tree in
+  # place; --skip-build says that tree is already built. Both are CI-only so a
+  # local run never picks up a stale tree.
+  args+=(--work "$PWD/payload-work")
+  if [ "${LOL_SKIP_BUILD:-}" = true ]; then args+=(--skip-build); fi
+fi
+exec "$repo_root/ci/build-payload.sh" "${args[@]}"

@@ -31,7 +31,9 @@ Comprobado sobre la instalación real (`/usr/local/libexec/darling`, `~/.darling
 
 **Job pesado (1 solo):**
 1. Contenedor `ubuntu:22.04`; instala deps de upstream + LLVM/Clang 22 desde `apt.llvm.org` (los tarballs oficiales son estáticos y iridium necesita la `libLLVM.so`; el payload la incluye porque ninguna distro trae la major exacta).
-2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). El payload completo se cachea (`actions/cache`) con clave = pin upstream + scripts del build + `runtime/**` + versión: cambiar el empaquetado o el smoke reutiliza la compilación, cambiar la receta del payload no.
+2. Clona `darling-lol` en el SHA de `upstream.lock` (git + git-lfs) y ejecuta `prepare.py` (aplica los 30 patches pinneados). Hay **dos cachés** (`actions/cache`), y las claves las calcula el propio `ci/build-payload.sh` en vez de `hashFiles`, que no distingue mitades del script:
+   - `--stage-key`: el **árbol compilado** (`build/darling-src`, ~2,5 GB comprimido), clave = pin + toolchain + patches/flags de build. Sobrevive a cambios de ensamblado, `runtime/**` y empaquetado: 26 min → ~3 min. Un cambio de pin, toolchain o flags sí recompila.
+   - `--payload-key`: el payload final (`out/`), clave = receta de build + ensamblado + `runtime/**` + glue + docs + versión. Un cambio de `packaging/`, `docs/` o del smoke lo reutiliza; cualquier input real del payload lo invalida.
 3. **Normaliza flags**: `sed -i 's/-march=native/-march=x86-64-v2/g'` sobre `scripts/ tools/` + verificación de 0 ocurrencias restantes.
 4. `build.sh` con `JOBS` del runner → `cmake --install` a **DESTDIR de staging** (base runtime).
 5. Overlays: `install-runtime.sh` con `DPREFIX=/staging/prefix`, `RIOT_GUEST_HOME=/staging/prefix/Users/loluser` (usuario ficticio) → produce `RuntimeLibraries/`, `RuntimeFrameworks/`, overrides del prefix.

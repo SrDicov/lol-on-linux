@@ -46,23 +46,45 @@ jobs:
           sudo docker image prune -af || true
           df -h /
 
+      # Computed by the build script itself: the payload is a pure function of
+      # the build recipe (pin, toolchain, build half) and of everything the
+      # assembly copies in (runtime/, launcher glue, docs, the version). A
+      # packaging, docs or smoke-test edit reuses the payload instead of
+      # replaying 25 minutes; a real input change never does.
+      - name: Payload cache key
+        id: payload-key
+        run: echo "key=$(ci/build-payload.sh --payload-key)" >> "$GITHUB_OUTPUT"
+
       - name: Restore a payload built from the same inputs
         id: payload-cache
         uses: actions/cache@v4
         with:
           path: out
-          # Keyed on what the payload is actually built from: the upstream pin,
-          # the entry scripts (toolchain, header patch, build) and the runtime
-          # pieces copied into it. packaging/, docs/ and the smoke test are
-          # deliberately out, so fixing a package or a check reuses this payload
-          # instead of spending ~25 minutes recompiling Darling. The literal
-          # tokens cover the runner image and the LLVM major; bump them when
-          # those change underneath us. The version is in the key because
-          # payload-info.json embeds it.
-          key: payload-v2-jammy-llvm22-${{ hashFiles('upstream.lock', 'ci/build-payload.sh', 'ci/ci-build.sh', 'ci/install-toolchain.sh', 'ci/patch-old-kernel-headers.sh', 'runtime/**') }}-${{ needs.meta.outputs.version }}
+          key: payload-v3-jammy-llvm22-${{ steps.payload-key.outputs.key }}-${{ needs.meta.outputs.version }}
+
+      # The payload cache above is all-or-nothing, so one assembly edit replays
+      # the whole build. This second cache holds the compiled base runtime
+      # (~2.5 GB compressed) and is keyed only on the build recipe: editing the
+      # assembly, runtime/ or packaging/ reuses it and takes the build from ~25
+      # minutes to ~2, while a pin, toolchain or build-flag change still
+      # recompiles.
+      - name: Base runtime cache key
+        id: stage-key
+        if: steps.payload-cache.outputs.cache-hit != 'true'
+        run: echo "key=$(ci/build-payload.sh --stage-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the compiled base runtime
+        id: stage-cache
+        if: steps.payload-cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: payload-work/darling-lol/build
+          key: base-runtime-v1-jammy-llvm22-${{ steps.stage-key.outputs.key }}
 
       - name: Build payload
         if: steps.payload-cache.outputs.cache-hit != 'true'
+        env:
+          LOL_SKIP_BUILD: ${{ steps.stage-cache.outputs.cache-hit }}
         run: |
           mkdir -p out
           ci/ci-build.sh out "${{ needs.meta.outputs.version }}"

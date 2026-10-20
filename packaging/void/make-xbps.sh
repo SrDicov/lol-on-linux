@@ -68,17 +68,30 @@ if ! xbps-create --help 2>&1 | grep -q -- --dependencies; then
   exit 1
 fi
 
+# xbps-create stores files, not directories: the archive carries no directory
+# entries at all, so every directory that holds no file disappears on install.
+# The payload needs at least one (<libexec>/darling/proc, empty, is where
+# darlingserver mounts procfs -- without it the first run dies with "Cannot
+# mount procfs: No such file or directory"). Recreate them from INSTALL, which
+# xbps runs as root right after unpacking.
+echo "make-xbps: remembering the empty directories xbps would drop" >&2
+( cd "$work/pkg" && find . -type d -empty | sed 's|^\./|/|' | LC_ALL=C sort ) > "$work/empty-dirs"
+
 # xbps never runs ldconfig (no trigger, no code path: grepped the whole source),
 # and the bundled libLLVM sits outside the loader's default search path, so the
 # cache is the only way dlopen() finds it by name. A destdir ./INSTALL file is
 # xbps's install script slot, and xbps-create consumes it as metadata instead of
 # shipping it. No case label on "$1": the action is bare "post", ldconfig is
 # idempotent, and guessing the spelling is how that check would silently rot.
-cat >"$work/pkg/INSTALL" <<'EOF'
-#!/bin/sh
-command -v ldconfig >/dev/null 2>&1 && ldconfig
-exit 0
-EOF
+{
+  echo '#!/bin/sh'
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    printf 'mkdir -p %s\n' "'$dir'"
+  done < "$work/empty-dirs"
+  echo 'command -v ldconfig >/dev/null 2>&1 && ldconfig'
+  echo 'exit 0'
+} >"$work/pkg/INSTALL"
 
 # xbps-create has no -o/--output: it always writes into the cwd.
 mkdir -p "$work/repodir"

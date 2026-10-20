@@ -1,62 +1,40 @@
 name: debug-void
 
-# Manual, one-distro diagnostic. Downloads the pkg-void artifact from an
-# existing run and dumps what the Void container is missing, so fixing a smoke
-# failure does not cost a full payload rebuild per attempt. Not part of the
-# release pipeline and never published.
+# Manual, one-distro loop: takes a payload artifact from an existing run, rebuilds
+# the Void package from the current packaging script and runs the real smoke test
+# inside the Void container. Fixing a Void-only packaging bug this way costs
+# minutes instead of a full payload rebuild. Never publishes anything.
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Run id that owns the pkg-void artifact
+        description: Run id that owns the payload artifact
+        required: true
+      version:
+        description: Package version (YYYY.MM.DD) to stamp
         required: true
 
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
-          name: pkg-void
-          path: dist
+          name: payload
+          path: out
           run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
 
-      - name: Diagnose inside Void
+      - name: Build and smoke the Void package
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          cat > diag.sh <<'EOF'
-          set -u
-          xbps-install -S -y >/dev/null 2>&1
-          xbps-install -Sy bash >/dev/null 2>&1
-          repo=/tmp/repo; mkdir -p "$repo"; cp /dist/*.xbps "$repo/"
-          ( cd "$repo" && xbps-rindex -a ./*.xbps >/dev/null )
-          xbps-install -y --repository="$repo" lol-on-linux
-
-          echo "== ELF files with unresolved libraries"
-          find /usr/local -type f -print0 | while IFS= read -r -d '' f; do
-            [ "$(head -c 4 "$f" 2>/dev/null)" = "$(printf '\177ELF')" ] || continue
-            miss=$(ldd "$f" 2>&1 | grep 'not found' || true)
-            [ -n "$miss" ] && printf '%s\n%s\n' "$f" "$miss"
-          done
-          echo "== darlingserver NEEDED"
-          readelf -d /usr/local/libexec/darling/darlingserver | grep NEEDED || true
-          echo "== darling --version"
-          /usr/local/bin/darling --version || echo "exit=$?"
-          echo "== darlingserver --help"
-          /usr/local/libexec/darling/darlingserver --help 2>&1 | head -30 || true
-          echo "== verify as loluser"
-          id -u loluser >/dev/null 2>&1 || useradd -m -s /bin/bash loluser
-          grep -q ' /home/loluser ' /proc/mounts ||
-            { mount -t tmpfs -o size=6g,mode=0755 tmpfs /home/loluser; chown loluser:loluser /home/loluser; }
-          runuser -l loluser -c '/usr/local/bin/lol-on-linux --verify'; echo "verify exit=$?"
-          echo "== darling tree"
-          find /home/loluser/.darling -maxdepth 4 | head -40
-          echo "== logs"
-          find /home/loluser/.darling -type f \( -name '*.log' -o -name 'log' \) | while read -r f; do
-            echo "-- $f"; tail -30 "$f"
-          done
-          EOF
-          # The void image ships no bash; the script needs it for read -d.
-          docker run --rm --privileged -v "$PWD/dist:/dist:ro" -v "$PWD/diag.sh:/diag.sh:ro" \
+          mkdir -p dist
+          docker run --rm --privileged -v "$GITHUB_WORKSPACE:/work" -w /work \
             ghcr.io/void-linux/void-glibc-full \
-            sh -c 'xbps-install -Sy bash >/dev/null 2>&1; exec bash /diag.sh'
+            sh -c 'xbps-install -Sy bash zstd >/dev/null 2>&1;
+                   exec bash -lc "packaging/void/make-xbps.sh --payload out/payload.tar.zst --version $VERSION --out dist &&
+                                  ci/smoke-test.sh --format void --package dist/*.xbps"'
+

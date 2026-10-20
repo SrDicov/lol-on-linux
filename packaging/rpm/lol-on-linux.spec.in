@@ -24,7 +24,7 @@ AutoReqProv:    no
 
 Requires:       libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip
 # the bundled libLLVM dlopen()ed by iridium
-Requires:       libxml2, z3-libs, libzstd, zlib, libedit, libffi
+Requires:       libxml2, libzstd, zlib, libffi
 Recommends:     gamemode
 
 %description

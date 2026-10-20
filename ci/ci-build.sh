@@ -43,6 +43,7 @@ run_root apt-get install -y -qq --no-install-recommends \
   uuid-dev libbsd-dev libcap-dev libcap2-bin libarchive-dev liblz4-dev \
   libfuse-dev libudev-dev libelf-dev libgif-dev libxkbfile-dev \
   locales \
+  libedit2 libz3-4 \
   gcc-multilib
 # gcc-multilib is not for a 32-bit build: it is the only jammy package that
 # creates /usr/include/asm -> x86_64-linux-gnu/asm. Darling's vendored

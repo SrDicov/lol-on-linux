@@ -7,7 +7,7 @@ Section: games
 Priority: optional
 Homepage: https://github.com/SrDicov/lol-on-linux
 Depends: libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 | libasound2t64, libpulse0, python3, curl, unzip,
- libxml2, libz3-4 | libz3-4t64, libzstd1, zlib1g, libedit2, libffi8
+ libxml2, libzstd1, zlib1g, libffi8
 Recommends: gamemode, xwayland
 Description: Unofficial runtime to run Riot's macOS League of Legends client on Linux
  lol-on-linux runs Riot's official macOS League of Legends client on Linux

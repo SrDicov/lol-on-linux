@@ -83,10 +83,8 @@ depend = bash
 depend = curl
 depend = unzip
 depend = libxml2
-depend = z3
 depend = libzstd
 depend = zlib
-depend = libedit
 depend = libffi
 optdepend = gamemode: GPU/latency nice-to-haves
 EOF
@@ -116,10 +114,14 @@ echo "make-pkg: generating .MTREE" >&2
 
 echo "make-pkg: packing" >&2
 dest="$out/lol-on-linux-$ver-1-x86_64.pkg.tar.zst"
+# Pack the top-level entries by name instead of '.': with '.', every member
+# becomes './.PKGINFO' and libalpm reports "missing package metadata" (real
+# Arch packages store .PKGINFO, .INSTALL, .MTREE and usr/ at the archive root).
+mapfile -t entries < <(ls -A "$work/pkg")
 if command -v bsdtar >/dev/null 2>&1; then
-  bsdtar -cf - -C "$work/pkg" . | zstd -q > "$dest"
+  ( cd "$work/pkg" && bsdtar -cf - "${entries[@]}" ) | zstd -q > "$dest"
 else
-  tar -cf - -C "$work/pkg" . | zstd -q > "$dest"
+  ( cd "$work/pkg" && tar -cf - "${entries[@]}" ) | zstd -q > "$dest"
 fi
 echo "make-pkg: wrote $dest" >&2
 echo "$dest"

@@ -16,7 +16,7 @@ Built by `ci/build-payload.sh` inside the build container. Single top-level dire
     payload/usr/local/lib/lol-on-linux/libdarling-xshm.so
     payload/usr/local/lib/lol-on-linux/libDarlingXShm.dylib
     payload/etc/ld.so.conf.d/lol-on-linux.conf             # puts the bundled libLLVM on the loader path
-    payload/usr/local/lib/lol-on-linux/llvm/**                # bundled shared libLLVM (basename from llvm-config)
+    payload/usr/local/lib/lol-on-linux/llvm/**                # bundled shared libLLVM (basename from llvm-config) + libedit.so.2 + libz3.so.4
     payload/usr/local/lib/lol-on-linux/payload-info.json
     payload/usr/local/lib/lol-on-linux/first-run.sh
     payload/usr/local/lib/lol-on-linux/install-remote.sh
@@ -35,10 +35,14 @@ Rules:
 - File permissions and symlinks preserved.
 - `payload-info.json`: `{"version": "...", "upstream": {"repo": "...", "commit": "..."}, "llvm": {"version": "...", "library": "libLLVM-XX.so"}, "built_at": "...", "arch": "x86_64"}`
 - `llvm/`: the shared libLLVM iridium `dlopen()`s at runtime (headers and library come
-  from the same toolchain; no distribution ships the matching major). Darling strips
+  from the same toolchain; no distribution ships the matching major), plus the two
+  libraries it links against whose sonames are not portable: jammy's `libedit.so.2`
+  (upstream and Fedora ship `libedit.so.0`) and `libz3.so.4`. Darling strips
   `LD_LIBRARY_PATH` from the guest environment, so the library is resolved through the
   loader cache: the payload ships `etc/ld.so.conf.d/lol-on-linux.conf` and every package
-  runs `ldconfig` after (un)install (pacman/void triggers cover their own).
+  runs `ldconfig` after (un)install (pacman/void triggers cover their own). `ldconfig`
+  files a library under its SONAME and `dlopen()` looks names up in that cache, so the
+  libLLVM copy is `patchelf --set-soname`'d to the exact name indium asks for.
 
 ## 2. Packages
 
@@ -54,17 +58,19 @@ Each wrapper receives `--payload <payload.tar.zst> --version <VER> --out <dir>` 
 repackage the tree as-is (no file modification). The package path is printed as the
 last line of stdout.
 
-Dependencies (distro names, without version pins):
+Dependencies (distro names; xbps rejects bare names, so the void wrapper spells them
+as `name>=1`):
 
 | family | runtime deps |
 |---|---|
-| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip, libxml2, libz3-4 \| libz3-4t64, libzstd1, zlib1g, libedit2, libffi8 — Recommends: gamemode, xwayland |
-| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip, libxml2, z3-libs, libzstd, zlib, libedit, libffi — Recommends: gamemode |
-| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip, libxml2, z3, libzstd, zlib, libedit, libffi — optdepend: gamemode |
-| void | libstdc++, libX11, libxcb, libXext, alsa-lib, libpulse, python3, bash, curl, unzip, libxml2, z3, libzstd, zlib, libedit, libffi |
+| deb  | libstdc++6, libx11-6, libxcb1, libxcb-shm0, libxext6, libasound2 \| libasound2t64, libpulse0, python3, curl, unzip, libxml2, libzstd1, zlib1g, libffi8 — Recommends: gamemode, xwayland |
+| rpm  | libstdc++, libX11, libxcb, libXext, alsa-lib, pulseaudio-libs, python3, curl, unzip, libxml2, libzstd, zlib, libffi — Recommends: gamemode |
+| arch | gcc-libs, libx11, libxcb, libxext, alsa-lib, libpulse, python, bash, curl, unzip, libxml2, libzstd, zlib, libffi — optdepend: gamemode |
+| void | libstdc++>=1, libX11>=1, libxcb>=1, libXext>=1, alsa-lib>=1, libpulse>=1, python3>=1, bash>=1, curl>=1, unzip>=1, libxml2>=1, libzstd>=1, zlib>=1, libffi>=1 |
 
-(`libxcb-shm` ships inside the `libxcb` package on rpm/arch/void. The libxml2/z3/zstd/
-zlib/libedit/libffi tail is what the bundled `libLLVM` itself links against.)
+(`libxcb-shm` ships inside the `libxcb` package on rpm/arch/void. The libxml2/zstd/
+zlib/libffi tail is what the bundled `libLLVM` links against. libedit and z3 are not
+distro dependencies: their sonames differ between distros, so `llvm/` ships them.)
 
 ## 3. Release manifest (`manifest.json`)
 

@@ -327,13 +327,44 @@ llvm_dir="$payload/usr/local/lib/lol-on-linux/llvm"
 mkdir -p "$llvm_dir"
 cp -Lf "$llvm_libfile" "$llvm_dir/$llvm_libname"
 chmod 755 "$llvm_dir/$llvm_libname"
+# ldconfig files a library under its SONAME, never under its file name, and a
+# dlopen() by name can only reach a non-default directory through that cache.
+# Ubuntu's libLLVM-22.so is a symlink to libLLVM.so.22.1, so without this the
+# cache would answer to libLLVM.so.22.1 while indium asks for libLLVM-22.so.
+llvm_soname=$(patchelf --print-soname "$llvm_dir/$llvm_libname" 2>/dev/null || true)
+if [ "$llvm_soname" != "$llvm_libname" ]; then
+  echo "build-payload: LLVM SONAME ${llvm_soname:-<none>} -> $llvm_libname"
+  patchelf --set-soname "$llvm_libname" "$llvm_dir/$llvm_libname"
+fi
+# libLLVM was linked on jammy, so its DT_NEEDED entries name jammy's sonames.
+# Most travel well (libxml2.so.2, libzstd.so.1, libz.so.1, libffi.so.8), but
+# Debian's libedit is libedit.so.2 where upstream and Fedora ship libedit.so.0,
+# and bookworm's z3 is libz3.so.4 where newer z3 bumps the soname. Ship both
+# here instead of requiring those exact sonames from every distro; what they
+# need in turn (libtinfo.so.6, libstdc++.so.6, libc) is portable.
+for lib in libedit.so.2 libz3.so.4; do
+  libsrc=$(ldconfig -p | awk -v want="$lib" '$1 == want { print $NF; exit }')
+  [ -n "$libsrc" ] || {
+    echo "build-payload: $lib not found (the build host needs libedit2 and libz3-4)" >&2
+    exit 1
+  }
+  cp -Lf "$libsrc" "$llvm_dir/$lib"
+  chmod 755 "$llvm_dir/$lib"
+  echo "build-payload: bundled $lib ($(du -h "$llvm_dir/$lib" | cut -f1))"
+done
 echo "build-payload: LLVM $llvm_version -> usr/local/lib/lol-on-linux/llvm/$llvm_libname ($(du -h "$llvm_dir/$llvm_libname" | cut -f1))"
 mkdir -p "$payload/etc/ld.so.conf.d"
 printf '%s\n' /usr/local/lib/lol-on-linux/llvm > "$payload/etc/ld.so.conf.d/lol-on-linux.conf"
-llvm_doc=$(find /usr/share/doc -maxdepth 1 -type d -name 'libllvm[0-9]*' 2>/dev/null | head -n 1) || true
-if [ -n "$llvm_doc" ] && [ -f "$llvm_doc/copyright" ]; then
-  install -m 644 "$llvm_doc/copyright" "$payload/usr/local/share/doc/lol-on-linux/LLVM-LICENSE.txt"
-fi
+
+copy_license() { # $1 = /usr/share/doc subdir pattern, $2 = destination name
+  doc=$(find /usr/share/doc -maxdepth 1 -type d -name "$1" 2>/dev/null | head -n 1) || true
+  if [ -n "$doc" ] && [ -f "$doc/copyright" ]; then
+    install -m 644 "$doc/copyright" "$payload/usr/local/share/doc/lol-on-linux/$2"
+  fi
+}
+copy_license 'libllvm[0-9]*' LLVM-LICENSE.txt
+copy_license libedit2 LIBEDIT-LICENSE.txt
+copy_license libz3-4 Z3-LICENSE.txt
 
 cat > "$payload/usr/local/lib/lol-on-linux/payload-info.json" <<EOF
 {
